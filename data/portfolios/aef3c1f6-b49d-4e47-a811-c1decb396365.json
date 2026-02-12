@@ -1,0 +1,39 @@
+{
+  "id": "3876d379-b704-414f-b19e-6d018d2160c0",
+  "userId": "aef3c1f6-b49d-4e47-a811-c1decb396365",
+  "slug": "johndoe",
+  "isPublic": false,
+  "theme": "dark",
+  "personalInfo": {
+    "fullName": "John Doe",
+    "title": "",
+    "email": "john@example.com",
+    "phone": "+1234567890",
+    "whatsapp": "",
+    "location": "",
+    "bio": "",
+    "profileImage": "",
+    "socialLinks": [
+      {
+        "id": "github",
+        "platform": "github",
+        "url": "https://github.com/johndoe"
+      },
+      {
+        "id": "linkedin",
+        "platform": "linkedin",
+        "url": "https://linkedin.com/in/johndoe"
+      }
+    ]
+  },
+  "education": [],
+  "experience": [],
+  "skills": [],
+  "roles": [],
+  "certifications": [],
+  "projects": [],
+  "achievements": [],
+  "languages": [],
+  "createdAt": "2026-02-05T21:16:14.294Z",
+  "updatedAt": "2026-02-05T21:16:14.294Z"
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "aef3c1f6-b49d-4e47-a811-c1decb396365",
+    "username": "johndoe",
+    "email": "john@example.com",
+    "password": "962ff115f9256d8c7cf84211203e0ca7:0e69985b8e260a98459b8041e0c4084f1bd432b568530a18c6df526d7d44986bd0cb24f3c3ab20fe029633e5916de346d5094042c0681ff7bda85ad95e4c4ed2",
+    "firstName": "John",
+    "lastName": "Doe",
+    "phone": "+1234567890",
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "githubUrl": "https://github.com/johndoe",
+    "createdAt": "2026-02-05T21:15:20.340Z",
+    "updatedAt": "2026-02-05T21:15:20.340Z"
+  },
+  {
+    "id": "fe2281b8-3ff9-47cf-8046-fb44b4d20cd5",
+    "username": "almaskhanwazir",
+    "email": "almaskhanwazir@gmail.com",
+    "password": "fa4b4a8b494e24f7af2bba902a260e41:a84a1e419e21d0934354eaae1acebc05b6b71587b1d61eef7157e9531b27d9cfb365549891f746c23265f0925fcbda8f5eeaeadb8ab7819065d489e6be5f14d0",
+    "firstName": "Muhammad Almas",
+    "lastName": "Khan",
+    "dateOfBirth": "1995-04-30",
+    "phone": "+923314846647",
+    "whatsapp": "3024734499999",
+    "linkedinUrl": "https://www.linkedin.com/in/almaskhanwazir/",
+    "githubUrl": "https://github.com/almaskhanwazir",
+    "createdAt": "2026-02-05T21:20:49.862Z",
+    "updatedAt": "2026-02-05T21:20:49.862Z"
+  }
+]

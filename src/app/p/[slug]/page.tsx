@@ -4,12 +4,13 @@ import { PublicPortfolio } from "@/components/portfolio/public-portfolio";
 import type { Metadata } from "next";
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
   // Don't require public for metadata
-  const portfolio = await getPortfolioBySlug(params.slug, false);
+  const portfolio = await getPortfolioBySlug(slug, false);
   
   if (!portfolio) {
     return {
@@ -29,8 +30,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function PortfolioPage({ params }: PageProps) {
+  const { slug } = await params;
   // Allow viewing any portfolio (public or private) - user can share their link
-  const portfolio = await getPortfolioBySlug(params.slug, false);
+  const portfolio = await getPortfolioBySlug(slug, false);
 
   if (!portfolio) {
     notFound();

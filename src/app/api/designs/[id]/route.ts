@@ -6,15 +6,16 @@ import { getDesign, updateDesign, deleteDesign, duplicateDesign } from "@/lib/de
 // GET /api/designs/[id] - Get a specific design
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const design = await getDesign(params.id);
+    const design = await getDesign(id);
     if (!design) {
       return NextResponse.json({ error: "Design not found" }, { status: 404 });
     }
@@ -33,21 +34,22 @@ export async function GET(
 // PUT /api/designs/[id] - Update a design
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const design = await getDesign(params.id);
+    const design = await getDesign(id);
     if (!design || design.userId !== session.user.id) {
       return NextResponse.json({ error: "Design not found" }, { status: 404 });
     }
 
     const body = await request.json();
-    const updated = await updateDesign(params.id, body);
+    const updated = await updateDesign(id, body);
 
     return NextResponse.json({ design: updated });
   } catch (error) {
@@ -59,15 +61,16 @@ export async function PUT(
 // DELETE /api/designs/[id] - Delete a design
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const success = await deleteDesign(params.id, session.user.id);
+    const success = await deleteDesign(id, session.user.id);
     if (!success) {
       return NextResponse.json({ error: "Design not found" }, { status: 404 });
     }
@@ -82,9 +85,10 @@ export async function DELETE(
 // PATCH /api/designs/[id] - Duplicate a design
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -93,7 +97,7 @@ export async function PATCH(
     const body = await request.json();
     
     if (body.action === "duplicate") {
-      const duplicated = await duplicateDesign(params.id, session.user.id);
+      const duplicated = await duplicateDesign(id, session.user.id);
       if (!duplicated) {
         return NextResponse.json({ error: "Design not found" }, { status: 404 });
       }

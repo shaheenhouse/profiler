@@ -9,9 +9,13 @@ import {
   listPortfolioBlobs,
   isBlobConfigured,
 } from './blob-storage';
+import { SEED_USERS, SEED_PORTFOLIOS } from './seed-data';
 
 // Detect if we're running on Vercel with Blob storage configured
 const USE_BLOB_STORAGE = isBlobConfigured();
+
+// Track if we've already seeded
+let hasSeeded = false;
 
 // Data directory - only used for local development
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -26,6 +30,36 @@ async function ensureDirectories() {
     await fs.mkdir(PORTFOLIOS_DIR, { recursive: true });
   } catch (error) {
     console.error('Error creating directories:', error);
+  }
+}
+
+// Auto-seed Vercel Blob if empty (runs once per deployment)
+async function autoSeedIfNeeded() {
+  if (!USE_BLOB_STORAGE || hasSeeded) return;
+  
+  try {
+    const existingUsers = await readBlobJson<User[]>('users');
+    
+    if (!existingUsers || existingUsers.length === 0) {
+      console.log('[Storage] Blob storage is empty, auto-seeding...');
+      
+      // Seed users
+      await writeBlobJson('users', SEED_USERS);
+      console.log(`[Storage] Seeded ${SEED_USERS.length} users`);
+      
+      // Seed portfolios
+      for (const portfolio of SEED_PORTFOLIOS) {
+        await writeBlobJson('portfolio', portfolio, portfolio.userId);
+      }
+      console.log(`[Storage] Seeded ${SEED_PORTFOLIOS.length} portfolios`);
+      
+      console.log('[Storage] Auto-seeding complete!');
+    }
+    
+    hasSeeded = true;
+  } catch (error) {
+    console.error('[Storage] Auto-seed error:', error);
+    hasSeeded = true; // Don't retry on error
   }
 }
 
@@ -55,6 +89,11 @@ export function verifyPassword(password: string, hashedPassword: string): boolea
 
 export async function getUsers(): Promise<User[]> {
   try {
+    // Auto-seed on first access if needed
+    if (USE_BLOB_STORAGE) {
+      await autoSeedIfNeeded();
+    }
+    
     if (USE_BLOB_STORAGE) {
       const users = await readBlobJson<User[]>('users');
       return users || [];

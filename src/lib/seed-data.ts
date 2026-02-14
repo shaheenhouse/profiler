@@ -1,0 +1,360 @@
+/**
+ * Seed data for initial Vercel Blob deployment
+ * This contains the existing local data that will be uploaded to Vercel Blob
+ */
+
+import type { User, Portfolio } from '@/types/portfolio';
+import type { Design } from '@/types/design';
+
+export const SEED_USERS: User[] = [
+  {
+    "id": "aef3c1f6-b49d-4e47-a811-c1decb396365",
+    "username": "johndoe",
+    "email": "john@example.com",
+    "password": "962ff115f9256d8c7cf84211203e0ca7:0e69985b8e260a98459b8041e0c4084f1bd432b568530a18c6df526d7d44986bd0cb24f3c3ab20fe029633e5916de346d5094042c0681ff7bda85ad95e4c4ed2",
+    "firstName": "John",
+    "lastName": "Doe",
+    "phone": "+1234567890",
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "githubUrl": "https://github.com/johndoe",
+    "createdAt": "2026-02-05T21:15:20.340Z",
+    "updatedAt": "2026-02-05T21:15:20.340Z"
+  },
+  {
+    "id": "fe2281b8-3ff9-47cf-8046-fb44b4d20cd5",
+    "username": "almaskhanwazir",
+    "email": "almaskhanwazir@gmail.com",
+    "password": "fa4b4a8b494e24f7af2bba902a260e41:a84a1e419e21d0934354eaae1acebc05b6b71587b1d61eef7157e9531b27d9cfb365549891f746c23265f0925fcbda8f5eeaeadb8ab7819065d489e6be5f14d0",
+    "firstName": "Muhammad Almas",
+    "lastName": "Khan",
+    "dateOfBirth": "1995-04-30",
+    "phone": "+923314846647",
+    "whatsapp": "3024734499999",
+    "linkedinUrl": "https://www.linkedin.com/in/almaskhanwazir/",
+    "githubUrl": "https://github.com/almaskhanwazir",
+    "createdAt": "2026-02-05T21:20:49.862Z",
+    "updatedAt": "2026-02-05T21:20:49.862Z"
+  }
+];
+
+export const SEED_PORTFOLIOS: Portfolio[] = [
+  {
+    "id": "3876d379-b704-414f-b19e-6d018d2160c0",
+    "userId": "aef3c1f6-b49d-4e47-a811-c1decb396365",
+    "slug": "johndoe",
+    "isPublic": false,
+    "theme": "dark",
+    "personalInfo": {
+      "fullName": "John Doe",
+      "title": "",
+      "email": "john@example.com",
+      "phone": "+1234567890",
+      "whatsapp": "",
+      "location": "",
+      "bio": "",
+      "profileImage": "",
+      "socialLinks": [
+        { "id": "github", "platform": "github", "url": "https://github.com/johndoe" },
+        { "id": "linkedin", "platform": "linkedin", "url": "https://linkedin.com/in/johndoe" }
+      ]
+    },
+    "education": [],
+    "experience": [],
+    "skills": [],
+    "roles": [],
+    "certifications": [],
+    "projects": [],
+    "achievements": [],
+    "languages": [],
+    "resumes": [
+      {
+        "id": "1",
+        "name": "My Resume (Profile)",
+        "templateId": "classic",
+        "isActive": true,
+        "isStandard": true,
+        "createdAt": "2026-02-05T21:16:14.294Z",
+        "updatedAt": "2026-02-05T21:16:14.294Z"
+      }
+    ],
+    "createdAt": "2026-02-05T21:16:14.294Z",
+    "updatedAt": "2026-02-05T21:16:14.294Z"
+  },
+  {
+    "id": "baa07431-fa2c-45dd-ab34-c11b9432b86e",
+    "userId": "fe2281b8-3ff9-47cf-8046-fb44b4d20cd5",
+    "slug": "almaskhanwazir",
+    "isPublic": true,
+    "theme": "dark",
+    "personalInfo": {
+      "fullName": "Muhammad Almas Khan",
+      "title": "Senior Software Engineer",
+      "email": "almaskhanwazir@gmail.com",
+      "phone": "+923314846647",
+      "whatsapp": "+923029473494",
+      "location": "Islamabad, Pakistan",
+      "bio": "Senior Software Engineer with 8+ years of hands-on experience architecting and delivering scalable cloud-native backends, data integration pipelines, microservices, and high-availability enterprise systems. Expertise in .NET Core, Node.js, AWS & Azure cloud services, ETL processes, and AI integrations for real-time applications. Proven in optimizing performance, reducing latency, and building platforms for billing, appointments, and AI-driven interpretation (live speech-to-text, human-in-the-loop workflows). Adept at translating complex business requirements into robust, production-ready solutions while mentoring teams and ensuring reliability at scale.",
+      "profileImage": "",
+      "socialLinks": [
+        { "id": "github", "platform": "github", "url": "https://github.com/almaskhanwazir" },
+        { "id": "linkedin", "platform": "linkedin", "url": "https://www.linkedin.com/in/almaskhanwazir/" }
+      ]
+    },
+    "education": [
+      {
+        "degree": "Bachelor of Science",
+        "institution": "University of Science and Technology Bannu",
+        "field": "Software Engineering",
+        "startDate": "2014-10",
+        "endDate": "2018-10",
+        "current": false,
+        "gpa": "3.57",
+        "description": "FYP: University Online Clearance System - Created with .NET Core backend and Android app front end.",
+        "id": "9c8c90d2-92bc-4696-8992-fbd236e6d5e1"
+      }
+    ],
+    "experience": [
+      {
+        "title": "Lead Software Engineer",
+        "company": "Ad Astra, Inc.",
+        "location": "Islamabad, Pakistan",
+        "locationType": "remote",
+        "startDate": "2024-09",
+        "endDate": "",
+        "current": true,
+        "description": "Led development of Adastra Connect (Appointments & Interpretation Super App): Architected a comprehensive platform for appointment scheduling, live AI interpretation, human interpretation escalation, finance/billing, invoicing, and operational analytics.",
+        "technologies": ["AWS Connect", "Lambda", "API Gateway", "RDS/Aurora", "S3", "EC2", "Kinesis", "Node.js", ".NET Core", "React", "WebRTC", "PostgreSQL", "MySQL"],
+        "responsibilities": [
+          "Designed real-time appointment orchestration and routing with AWS Connect and Lambda functions, supporting voice/video sessions, AI speech-to-text, and hybrid human-AI workflows",
+          "Built robust billing and invoice engine consolidating call logs, appointment records, and usage data into precise invoices and financial reports",
+          "Optimized database performance (Aurora Serverless, RDS, PostgreSQL) through migrations, latency reductions, VPC peering, and security configurations, achieving 40% latency improvement",
+          "Instrumented observability with logging/monitoring tools (CloudWatch, Sentry) and collaborated on KPIs for uptime, invoice accuracy, and scalability",
+          "Integrated with payment gateways and accounting systems for seamless financial operations"
+        ],
+        "id": "fb3c8696-2b64-4820-a82c-31302688cba9"
+      },
+      {
+        "title": "Senior Software Engineer",
+        "company": "Ibex Global",
+        "location": "Islamabad, Pakistan",
+        "locationType": "hybrid",
+        "startDate": "2023-09",
+        "endDate": "2024-08",
+        "current": false,
+        "description": "Designed and implemented scalable microservices for multi-tenant enterprise workflows using modern cloud technologies and best practices.",
+        "technologies": [".NET Core", "Angular", "Node.js", "Serverless Framework", "AWS Lambda", "Azure Service Bus", "PostgreSQL", "SQL Server"],
+        "responsibilities": [
+          "Designed and implemented scalable microservices for multi-tenant enterprise workflows",
+          "Integrated secure authentication/authorization (Azure B2C, Active Directory) and standardized CI/CD pipelines, accelerating deployments by 30%",
+          "Optimized database queries and schemas across SQL Server and PostgreSQL, reducing average response times by 50ms",
+          "Led code reviews, mentored junior engineers, and ensured code quality/delivery predictability in Agile environments",
+          "Managed full project lifecycles, from requirements gathering to production delivery, focusing on performance and security"
+        ],
+        "id": "a1b2c3d4-5678-90ab-cdef-123456789001"
+      },
+      {
+        "title": "Software Engineer",
+        "company": "Systems Limited",
+        "location": "Islamabad, Pakistan",
+        "locationType": "onsite",
+        "startDate": "2021-09",
+        "endDate": "2023-09",
+        "current": false,
+        "description": "Worked with various tools and frameworks including .NET Core, Azure Functions, Microsoft Dynamics 365, and Azure services. Delivered PartnerLinQ ETL functions for large-scale data mapping and transformations.",
+        "technologies": [".NET Core", "MVC", "Azure Functions", "Microsoft Dynamics 365", "Azure DevOps", "Shopify APIs", "Blob Storage", "Active Directory", "BRE"],
+        "responsibilities": [
+          "Developed and maintained applications using Microsoft technologies, including .NET Core and MVC",
+          "Delivered PartnerLinQ ETL functions for large-scale data mapping and transformations (JSON ↔ XML ↔ CSV) across enterprise partners",
+          "Integrated headless Shopify with .NET Azure Functions via Storefront API to enable greater UI customization and faster page loads",
+          "Utilized Clean Architecture and Onion Architecture to ensure scalable, maintainable, and modular code",
+          "Implemented Business Rules Engine (BRE) for efficient processing of business logic",
+          "Handled client meetings, customer success initiatives, and business development activities"
+        ],
+        "id": "a1b2c3d4-5678-90ab-cdef-123456789002"
+      },
+      {
+        "title": "Software Engineer",
+        "company": "Innovative Solutions and Development",
+        "location": "Islamabad, Pakistan",
+        "locationType": "onsite",
+        "startDate": "2018-01",
+        "endDate": "2021-09",
+        "current": false,
+        "description": "Full-stack development with React.js frontend and .NET backend. Implemented modern web development practices including Agile, Scrum, DevOps, and test automation.",
+        "technologies": ["React.js", ".NET", "MVC", "Shopify Liquid", "DevOps", "BDD Specflow", "Puppeteer", "Jest", "CI/CD"],
+        "responsibilities": [
+          "Developed front-end components using React.js ensuring responsive design across devices",
+          "Created back-end services using .NET and MVC, ensuring scalability and high availability",
+          "Designed and built high-performance Shopify stores leveraging Liquid templating language",
+          "Integrated headless Shopify with React frontends via Storefront API",
+          "Implemented CI/CD pipelines to automate build, test, and deployment processes",
+          "Utilized test automation frameworks such as BDD Specflow for API tests and Puppeteer/Jest for UI automation",
+          "Implemented Onion and Clean architecture principles to maintain clean code and separation of concerns"
+        ],
+        "id": "a1b2c3d4-5678-90ab-cdef-123456789003"
+      }
+    ],
+    "skills": [
+      { "name": ".NET Core", "level": "expert", "category": "Backend", "id": "c89f953a-95a4-49c2-94f5-60fa227090f8" },
+      { "name": "C#", "level": "expert", "category": "Backend", "id": "skill-csharp" },
+      { "name": "Node.js", "level": "expert", "category": "Backend", "id": "96e85e4b-a9a5-43a2-9e62-fa09e810bc57" },
+      { "name": "Express.js", "level": "proficient", "category": "Backend", "id": "skill-express" },
+      { "name": "React.js", "level": "expert", "category": "Frontend", "id": "f9ca2020-1857-4d6d-9ea9-9367a4d7de49" },
+      { "name": "Next.js", "level": "proficient", "category": "Frontend", "id": "3f0c59f2-a614-4215-ac68-4aeff3829c85" },
+      { "name": "Angular", "level": "proficient", "category": "Frontend", "id": "skill-angular" },
+      { "name": "Vue.js", "level": "intermediate", "category": "Frontend", "id": "skill-vue" },
+      { "name": "TypeScript", "level": "expert", "category": "Languages", "id": "d402cb3b-97e4-4443-ad41-b7fff9db2e1f" },
+      { "name": "JavaScript", "level": "expert", "category": "Languages", "id": "47a8afb3-63e5-4a76-84b2-e241a48dcdde" },
+      { "name": "Python", "level": "intermediate", "category": "Languages", "id": "aeb5fd41-be73-405b-a3a6-54306b26efa1" },
+      { "name": "AWS Lambda", "level": "expert", "category": "Cloud & DevOps", "id": "skill-lambda" },
+      { "name": "AWS Connect", "level": "expert", "category": "Cloud & DevOps", "id": "skill-connect" },
+      { "name": "AWS RDS/Aurora", "level": "proficient", "category": "Cloud & DevOps", "id": "skill-rds" },
+      { "name": "AWS S3", "level": "proficient", "category": "Cloud & DevOps", "id": "skill-s3" },
+      { "name": "AWS API Gateway", "level": "proficient", "category": "Cloud & DevOps", "id": "skill-apigw" },
+      { "name": "Azure Functions", "level": "expert", "category": "Cloud & DevOps", "id": "skill-azfunc" },
+      { "name": "Azure Service Bus", "level": "proficient", "category": "Cloud & DevOps", "id": "skill-servicebus" },
+      { "name": "Azure DevOps", "level": "proficient", "category": "Cloud & DevOps", "id": "skill-azdevops" },
+      { "name": "Docker", "level": "proficient", "category": "Cloud & DevOps", "id": "f520e695-de9a-4555-9fb5-fd8f9feb1fb8" },
+      { "name": "Terraform", "level": "intermediate", "category": "Cloud & DevOps", "id": "skill-terraform" },
+      { "name": "CI/CD Pipelines", "level": "proficient", "category": "Cloud & DevOps", "id": "skill-cicd" },
+      { "name": "PostgreSQL", "level": "expert", "category": "Databases", "id": "skill-postgres" },
+      { "name": "SQL Server", "level": "expert", "category": "Databases", "id": "skill-sqlserver" },
+      { "name": "MySQL", "level": "proficient", "category": "Databases", "id": "skill-mysql" },
+      { "name": "MongoDB", "level": "proficient", "category": "Databases", "id": "skill-mongodb" },
+      { "name": "DynamoDB", "level": "intermediate", "category": "Databases", "id": "skill-dynamo" },
+      { "name": "Cosmos DB", "level": "intermediate", "category": "Databases", "id": "skill-cosmos" },
+      { "name": "Microservices", "level": "expert", "category": "Architecture", "id": "skill-microservices" },
+      { "name": "Clean Architecture", "level": "expert", "category": "Architecture", "id": "skill-clean" },
+      { "name": "REST APIs", "level": "expert", "category": "Architecture", "id": "skill-rest" },
+      { "name": "GraphQL", "level": "proficient", "category": "Architecture", "id": "skill-graphql" },
+      { "name": "Serverless", "level": "expert", "category": "Architecture", "id": "skill-serverless" },
+      { "name": "ETL Pipelines", "level": "proficient", "category": "Data", "id": "skill-etl" },
+      { "name": "WebRTC", "level": "proficient", "category": "AI & Integrations", "id": "skill-webrtc" },
+      { "name": "SignalR", "level": "proficient", "category": "AI & Integrations", "id": "skill-signalr" },
+      { "name": "OpenAI Integration", "level": "proficient", "category": "AI & Integrations", "id": "c84de57f-eef0-4ed9-90b8-d75df7447a76" },
+      { "name": "Speech-to-Text AI", "level": "proficient", "category": "AI & Integrations", "id": "skill-stt" },
+      { "name": "TailwindCSS", "level": "proficient", "category": "Frontend", "id": "skill-tailwind" },
+      { "name": "Material UI", "level": "proficient", "category": "Frontend", "id": "skill-mui" },
+      { "name": "Shopify/Liquid", "level": "proficient", "category": "E-Commerce", "id": "skill-shopify" },
+      { "name": "Microsoft Dynamics 365", "level": "intermediate", "category": "Enterprise", "id": "skill-dynamics" }
+    ],
+    "roles": [
+      { "title": "Lead Software Engineer", "level": "expert", "id": "role-lead" },
+      { "title": "Full Stack Developer", "level": "expert", "id": "1a196df7-22db-4f6f-bb30-434f02fece58" },
+      { "title": "Software Architect", "level": "expert", "id": "78fe4d7c-3b25-4f31-a275-d526afe73252" },
+      { "title": "Backend Developer", "level": "expert", "id": "27667ded-2825-4d36-899c-7bff25d2cbe7" },
+      { "title": "Frontend Developer", "level": "expert", "id": "a030a7a7-e70d-4bd6-9fa6-c493e60ba6c2" },
+      { "title": "Cloud Engineer", "level": "proficient", "id": "role-cloud" }
+    ],
+    "certifications": [],
+    "projects": [
+      {
+        "name": "Adastra Connect",
+        "description": "Appointments & Interpretation Super App - Comprehensive platform for appointment scheduling, live AI interpretation, human interpretation escalation, finance/billing, invoicing, and operational analytics. Implemented real-time routing with AWS Connect/serverless functions and speech-to-text AI for captions/transcripts, processing 50k+ appointments/month.",
+        "url": "https://ad-astrainc.com/",
+        "githubUrl": "",
+        "imageUrl": "",
+        "startDate": "2024-09",
+        "endDate": "",
+        "technologies": ["AWS Connect", "Lambda", "Node.js", ".NET Core", "React", "WebRTC", "PostgreSQL", "Aurora Serverless"],
+        "highlights": ["Real-time appointment orchestration", "AI speech-to-text integration", "Billing & invoice engine", "40% latency improvement"],
+        "id": "proj-adastra"
+      },
+      {
+        "name": "CableFinder",
+        "description": "End-to-end serviceability and quoting tool for cable providers. Unified disparate systems for cable providers, enhancing partner competitiveness with real-time quoting capabilities.",
+        "url": "https://www.cablefinder.net/",
+        "githubUrl": "",
+        "imageUrl": "",
+        "startDate": "2023-01",
+        "endDate": "2024-08",
+        "technologies": ["Angular", ".NET Core", "AWS Lambda", "PostgreSQL", "MongoDB", "Firebase"],
+        "highlights": ["Unified multi-provider systems", "Real-time quoting", "Scalable architecture"],
+        "id": "proj-cablefinder"
+      },
+      {
+        "name": "PartnerLinQ",
+        "description": "Enterprise supply chain connectivity platform delivering end-to-end visibility, control, and limitless flexibility. Built ETL pipelines for data loading, mapping, conversions (JSON/XML/CSV), and transformations for seamless partner integrations.",
+        "url": "https://www.partnerlinq.com/",
+        "githubUrl": "",
+        "imageUrl": "",
+        "startDate": "2021-09",
+        "endDate": "2023-09",
+        "technologies": [".NET Core", "Azure Functions", "Microsoft Dynamics 365", "Azure DevOps", "BRE", "Data Analytics"],
+        "highlights": ["Large-scale ETL pipelines", "Multi-format data transformations", "Headless Commerce integration"],
+        "id": "proj-partnerlinq"
+      },
+      {
+        "name": "JD Irving - Kent Building Supplies",
+        "description": "Created Azure Functions and ETL pipelines for data loading, mapping, conversions (JSON/XML/CSV), and transformations, improving integration efficiency for supply chain partners.",
+        "url": "https://kent.ca/",
+        "githubUrl": "",
+        "imageUrl": "",
+        "startDate": "2022-01",
+        "endDate": "2023-06",
+        "technologies": [".NET Core", "Azure Functions", "Microsoft Dynamics 365", "Azure DevOps", "Blob Storage", "BRE"],
+        "highlights": ["ETL pipeline development", "Supply chain optimization", "Enterprise integration"],
+        "id": "proj-kent"
+      },
+      {
+        "name": "Prodoo",
+        "description": "Online Recruitment service connecting companies with skilled freelancers worldwide. Features include resume management, opportunity matching, collaboration workflows, and timesheet management.",
+        "url": "https://www.prodoo.com/",
+        "githubUrl": "",
+        "imageUrl": "",
+        "startDate": "2020-01",
+        "endDate": "2021-06",
+        "technologies": ["React.js", "Next.js", "Redux", ".NET Web APIs", "Azure Cloud"],
+        "highlights": ["Freelancer-recruiter matching", "Collaboration workflows", "Timesheet management"],
+        "id": "proj-prodoo"
+      },
+      {
+        "name": "Conflee",
+        "description": "Vehicle booking platform allowing owners to manage listings and users to book vehicles with comprehensive booking management features.",
+        "url": "https://conflee.de/",
+        "githubUrl": "",
+        "imageUrl": "",
+        "startDate": "2019-02",
+        "endDate": "2020-12",
+        "technologies": [".NET", "Node.js", "Vue.js", "PostgreSQL"],
+        "highlights": ["Vehicle listing management", "Booking system", "Owner dashboard"],
+        "id": "proj-conflee"
+      },
+      {
+        "name": "Arivanna",
+        "description": "Online buy-and-sell platform enabling vendors to create stores and buyers to purchase products with full e-commerce functionality.",
+        "url": "",
+        "githubUrl": "https://github.com/almaskhanwazir",
+        "imageUrl": "",
+        "startDate": "2021-04",
+        "endDate": "2021-11",
+        "technologies": [".NET", "React", "Azure Cloud Services"],
+        "highlights": ["Multi-vendor marketplace", "E-commerce platform", "Cloud-native architecture"],
+        "id": "b7d0419a-3928-4db8-a5d7-c8d05291b335"
+      }
+    ],
+    "achievements": [],
+    "languages": [
+      { "name": "English", "proficiency": "professional", "id": "lang-en" },
+      { "name": "Urdu", "proficiency": "native", "id": "lang-ur" },
+      { "name": "Pashto", "proficiency": "native", "id": "lang-ps" }
+    ],
+    "resumes": [
+      {
+        "id": "1",
+        "name": "My Resume (Profile)",
+        "templateId": "classic",
+        "isActive": true,
+        "isStandard": true,
+        "createdAt": "2026-02-05T21:21:03.031Z",
+        "updatedAt": "2026-02-05T21:45:00.000Z"
+      }
+    ],
+    "createdAt": "2026-02-05T21:21:03.031Z",
+    "updatedAt": "2026-02-05T21:45:00.000Z"
+  }
+];
+
+// Designs are skipped for brevity - they contain large base64 thumbnails
+// Add them if needed
+export const SEED_DESIGNS: Design[] = [];

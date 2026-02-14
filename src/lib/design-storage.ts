@@ -1,11 +1,22 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { Design } from '@/types/design';
+import {
+  readBlobJson,
+  writeBlobJson,
+  deleteBlobJson,
+  listDesignBlobs,
+  isBlobConfigured,
+} from './blob-storage';
+
+// Detect if we're running on Vercel with Blob storage configured
+const USE_BLOB_STORAGE = isBlobConfigured();
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const DESIGNS_DIR = path.join(DATA_DIR, 'designs');
 
 async function ensureDesignsDir() {
+  if (USE_BLOB_STORAGE) return; // Skip for Vercel Blob
   try {
     await fs.mkdir(DESIGNS_DIR, { recursive: true });
   } catch (error) {
@@ -13,13 +24,30 @@ async function ensureDesignsDir() {
   }
 }
 
-ensureDesignsDir();
+if (!USE_BLOB_STORAGE) {
+  ensureDesignsDir();
+}
 
 // Get all designs for a user
 export async function getUserDesigns(userId: string): Promise<Design[]> {
-  await ensureDesignsDir();
-  
   try {
+    if (USE_BLOB_STORAGE) {
+      const designIds = await listDesignBlobs();
+      const designs: Design[] = [];
+      
+      for (const designId of designIds) {
+        const design = await readBlobJson<Design>('designs', designId);
+        if (design && design.userId === userId) {
+          designs.push(design);
+        }
+      }
+      
+      // Sort by updatedAt descending
+      designs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return designs;
+    }
+    
+    await ensureDesignsDir();
     const files = await fs.readdir(DESIGNS_DIR);
     const designs: Design[] = [];
     
@@ -47,9 +75,12 @@ export async function getUserDesigns(userId: string): Promise<Design[]> {
 
 // Get a single design
 export async function getDesign(designId: string): Promise<Design | null> {
-  await ensureDesignsDir();
-  
   try {
+    if (USE_BLOB_STORAGE) {
+      return await readBlobJson<Design>('designs', designId);
+    }
+    
+    await ensureDesignsDir();
     const filePath = path.join(DESIGNS_DIR, `${designId}.json`);
     const data = await fs.readFile(filePath, 'utf-8');
     return JSON.parse(data);
@@ -60,8 +91,6 @@ export async function getDesign(designId: string): Promise<Design | null> {
 
 // Create a new design
 export async function createDesign(design: Omit<Design, 'id' | 'createdAt' | 'updatedAt'>): Promise<Design> {
-  await ensureDesignsDir();
-  
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   
@@ -72,8 +101,13 @@ export async function createDesign(design: Omit<Design, 'id' | 'createdAt' | 'up
     updatedAt: now,
   };
   
-  const filePath = path.join(DESIGNS_DIR, `${id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(newDesign, null, 2), 'utf-8');
+  if (USE_BLOB_STORAGE) {
+    await writeBlobJson('designs', newDesign, id);
+  } else {
+    await ensureDesignsDir();
+    const filePath = path.join(DESIGNS_DIR, `${id}.json`);
+    await fs.writeFile(filePath, JSON.stringify(newDesign, null, 2), 'utf-8');
+  }
   
   return newDesign;
 }
@@ -91,8 +125,12 @@ export async function updateDesign(designId: string, updates: Partial<Design>): 
     updatedAt: new Date().toISOString(),
   };
   
-  const filePath = path.join(DESIGNS_DIR, `${designId}.json`);
-  await fs.writeFile(filePath, JSON.stringify(updatedDesign, null, 2), 'utf-8');
+  if (USE_BLOB_STORAGE) {
+    await writeBlobJson('designs', updatedDesign, designId);
+  } else {
+    const filePath = path.join(DESIGNS_DIR, `${designId}.json`);
+    await fs.writeFile(filePath, JSON.stringify(updatedDesign, null, 2), 'utf-8');
+  }
   
   return updatedDesign;
 }
@@ -103,6 +141,10 @@ export async function deleteDesign(designId: string, userId: string): Promise<bo
   if (!design || design.userId !== userId) return false;
   
   try {
+    if (USE_BLOB_STORAGE) {
+      return await deleteBlobJson('designs', designId);
+    }
+    
     const filePath = path.join(DESIGNS_DIR, `${designId}.json`);
     await fs.unlink(filePath);
     return true;

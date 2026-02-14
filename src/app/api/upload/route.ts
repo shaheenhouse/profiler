@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { uploadImageToBlob, isBlobConfigured } from "@/lib/blob-storage";
+
+// Check if we should use Vercel Blob storage
+const USE_BLOB_STORAGE = isBlobConfigured();
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,24 +41,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), "public", "uploads", "profiles");
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true });
-    }
-
     // Generate unique filename
     const ext = file.name.split(".").pop();
     const filename = `${session.user.id}-${Date.now()}.${ext}`;
-    const filepath = path.join(uploadsDir, filename);
 
-    // Convert file to buffer and save
+    // Convert file to buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filepath, buffer);
 
-    // Return the public URL
-    const url = `/uploads/profiles/${filename}`;
+    let url: string;
+
+    if (USE_BLOB_STORAGE) {
+      // Use Vercel Blob for production
+      const blobUrl = await uploadImageToBlob(buffer, filename, file.type);
+      
+      if (!blobUrl) {
+        return NextResponse.json(
+          { error: "Failed to upload file to blob storage" },
+          { status: 500 }
+        );
+      }
+      
+      url = blobUrl;
+      console.log("[Upload] Saved to Vercel Blob:", url);
+    } else {
+      // Use local file system for development
+      const uploadsDir = path.join(process.cwd(), "public", "uploads", "profiles");
+      if (!existsSync(uploadsDir)) {
+        await mkdir(uploadsDir, { recursive: true });
+      }
+
+      const filepath = path.join(uploadsDir, filename);
+      await writeFile(filepath, buffer);
+      
+      url = `/uploads/profiles/${filename}`;
+      console.log("[Upload] Saved to local file system:", url);
+    }
 
     return NextResponse.json({ url, message: "Upload successful" });
   } catch (error) {

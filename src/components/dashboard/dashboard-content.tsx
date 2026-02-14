@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import type { Portfolio, User, Resume, ResumeData } from "@/types/portfolio";
 import { Button } from "@/components/ui/button";
@@ -180,10 +180,18 @@ export function DashboardContent({ portfolio: initialPortfolio, user }: Dashboar
       : editingResume.data || portfolioToResumeData(portfolio)
     : null;
 
-  const portfolioUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/p/${portfolio.slug}`;
+  // ── Portfolio URL - use state to avoid hydration mismatch ──
+  const [portfolioUrl, setPortfolioUrl] = useState(`/p/${portfolio.slug}`);
+  
+  useEffect(() => {
+    // Set the full URL only on the client side
+    setPortfolioUrl(`${window.location.origin}/p/${portfolio.slug}`);
+  }, [portfolio.slug]);
 
   const handleCopyUrl = async () => {
-    await navigator.clipboard.writeText(portfolioUrl);
+    // Always use the full URL when copying
+    const fullUrl = `${window.location.origin}/p/${portfolio.slug}`;
+    await navigator.clipboard.writeText(fullUrl);
     setCopied(true);
     toast({ title: "URL copied to clipboard!" });
     setTimeout(() => setCopied(false), 2000);

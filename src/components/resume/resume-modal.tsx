@@ -113,29 +113,56 @@ function ClassicTemplate({ portfolio }: { portfolio: Portfolio }) {
   return (
     <>
       {/* ═══ 1. HEADER / CONTACT INFO ═══ */}
-      <div style={{ textAlign: "center", marginBottom: "4mm" }}>
-        <h1 style={{ fontSize: "22pt", fontWeight: 700, margin: 0, color: C.text }}>
-          {personalInfo.fullName || "Your Name"}
-        </h1>
-        <p style={{ fontSize: "12pt", color: C.primary, margin: "1mm 0", fontWeight: 600 }}>
-          {personalInfo.title || "Professional Title"}
-        </p>
-        <p style={{ fontSize: "9pt", color: C.textLight, margin: "2mm 0 0 0" }}>
-          {[
-            personalInfo.email && <ExtLink key="email" href={`mailto:${personalInfo.email}`}>{personalInfo.email}</ExtLink>,
-            personalInfo.phone,
-            personalInfo.location,
-            ...personalInfo.socialLinks.map((l) => (
-              <ExtLink key={l.id} href={l.url}>{l.label || l.url}</ExtLink>
-            )),
-          ]
-            .filter(Boolean)
-            .reduce<React.ReactNode[]>((acc, item, i) => {
-              if (i > 0) acc.push(<span key={`sep-${i}`}> &nbsp;|&nbsp; </span>);
-              acc.push(item);
-              return acc;
-            }, [])}
-        </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "8mm", marginBottom: "4mm" }}>
+        {/* Profile Photo (optional) */}
+        {personalInfo.profileImage && (
+          <div
+            style={{
+              width: "22mm",
+              height: "22mm",
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: `2px solid ${C.primary}`,
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={personalInfo.profileImage}
+              alt={personalInfo.fullName}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          </div>
+        )}
+        
+        {/* Name and Contact */}
+        <div style={{ textAlign: personalInfo.profileImage ? "left" : "center", flex: 1 }}>
+          <h1 style={{ fontSize: "22pt", fontWeight: 700, margin: 0, color: C.text }}>
+            {personalInfo.fullName || "Your Name"}
+          </h1>
+          <p style={{ fontSize: "12pt", color: C.primary, margin: "1mm 0", fontWeight: 600 }}>
+            {personalInfo.title || "Professional Title"}
+          </p>
+          <p style={{ fontSize: "9pt", color: C.textLight, margin: "2mm 0 0 0" }}>
+            {[
+              personalInfo.email && <ExtLink key="email" href={`mailto:${personalInfo.email}`}>{personalInfo.email}</ExtLink>,
+              personalInfo.phone,
+              personalInfo.location,
+              ...personalInfo.socialLinks.map((l) => (
+                <ExtLink key={l.id} href={l.url}>{l.label || l.url}</ExtLink>
+              )),
+            ]
+              .filter(Boolean)
+              .reduce<React.ReactNode[]>((acc, item, i) => {
+                if (i > 0) acc.push(<span key={`sep-${i}`}> &nbsp;|&nbsp; </span>);
+                acc.push(item);
+                return acc;
+              }, [])}
+          </p>
+        </div>
       </div>
       <div style={{ borderTop: `1px solid ${C.border}`, marginBottom: "4mm" }} />
 
@@ -329,45 +356,76 @@ function ModernTemplate({ portfolio }: { portfolio: Portfolio }) {
 
   return (
     <>
-      {/* ═══ HEADER BANNER ═══ */}
+      {/* ═══ HEADER BANNER WITH PROFILE PHOTO ═══ */}
       <div
         style={{
           backgroundColor: C.primary,
           margin: "-15mm -15mm 0 -15mm",
           padding: "10mm 15mm",
           color: C.white,
+          display: "flex",
+          alignItems: "center",
+          gap: "15mm",
         }}
       >
-        <h1 style={{ fontSize: "22pt", fontWeight: 700, margin: 0 }}>{personalInfo.fullName || "Your Name"}</h1>
-        <p style={{ fontSize: "12pt", margin: "1mm 0 0 0", opacity: 0.9 }}>{personalInfo.title || "Professional Title"}</p>
-        <p style={{ fontSize: "8.5pt", margin: "3mm 0 0 0", opacity: 0.85 }}>
-          {[
-            personalInfo.email && (
-              <a key="email" href={`mailto:${personalInfo.email}`} style={{ color: C.white, textDecoration: "none" }}>
-                {personalInfo.email}
-              </a>
-            ),
-            personalInfo.phone,
-            personalInfo.location,
-            ...personalInfo.socialLinks.map((l) => (
-              <a
-                key={l.id}
-                href={l.url.startsWith("http") ? l.url : `https://${l.url}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: C.white, textDecoration: "none" }}
-              >
-                {l.label || l.url}
-              </a>
-            )),
-          ]
-            .filter(Boolean)
-            .reduce<React.ReactNode[]>((acc, item, i) => {
-              if (i > 0) acc.push(<span key={`s${i}`}> &nbsp;·&nbsp; </span>);
-              acc.push(item);
-              return acc;
-            }, [])}
-        </p>
+        {/* Profile Photo */}
+        {personalInfo.profileImage && (
+          <div
+            style={{
+              width: "28mm",
+              height: "28mm",
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "3px solid rgba(255,255,255,0.8)",
+              flexShrink: 0,
+              backgroundColor: C.white,
+            }}
+          >
+            <img
+              src={personalInfo.profileImage}
+              alt={personalInfo.fullName}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          </div>
+        )}
+        
+        {/* Name and Contact Info */}
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: "22pt", fontWeight: 700, margin: 0 }}>{personalInfo.fullName || "Your Name"}</h1>
+          <p style={{ fontSize: "12pt", margin: "1mm 0 0 0", opacity: 0.9 }}>{personalInfo.title || "Professional Title"}</p>
+          <p style={{ fontSize: "8.5pt", margin: "3mm 0 0 0", opacity: 0.85 }}>
+            {[
+              personalInfo.email && (
+                <a key="email" href={`mailto:${personalInfo.email}`} style={{ color: C.white, textDecoration: "none" }}>
+                  {personalInfo.email}
+                </a>
+              ),
+              personalInfo.phone,
+              personalInfo.location,
+              ...personalInfo.socialLinks.map((l) => (
+                <a
+                  key={l.id}
+                  href={l.url.startsWith("http") ? l.url : `https://${l.url}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: C.white, textDecoration: "none" }}
+                >
+                  {l.label || l.url}
+                </a>
+              )),
+            ]
+              .filter(Boolean)
+              .reduce<React.ReactNode[]>((acc, item, i) => {
+                if (i > 0) acc.push(<span key={`s${i}`}> &nbsp;·&nbsp; </span>);
+                acc.push(item);
+                return acc;
+              }, [])}
+          </p>
+        </div>
       </div>
 
       {/* ═══ Two columns using float (NOT table — tables can't page-break mid-row) ═══ */}
@@ -537,27 +595,53 @@ function MinimalTemplate({ portfolio }: { portfolio: Portfolio }) {
   return (
     <>
       {/* HEADER */}
-      <div style={{ marginBottom: "5mm", borderBottom: `1px solid ${C.text}`, paddingBottom: "3mm" }}>
-        <h1 style={{ fontSize: "20pt", fontWeight: 300, margin: 0, color: C.text, letterSpacing: "1px" }}>
-          {personalInfo.fullName?.toUpperCase() || "YOUR NAME"}
-        </h1>
-        <p style={{ fontSize: "10pt", color: C.textMuted, margin: "1.5mm 0 0 0" }}>{personalInfo.title}</p>
-        <p style={{ fontSize: "8.5pt", color: C.textLight, margin: "2mm 0 0 0" }}>
-          {[
-            personalInfo.email && <ExtLink key="email" href={`mailto:${personalInfo.email}`}>{personalInfo.email}</ExtLink>,
-            personalInfo.phone,
-            personalInfo.location,
-            ...personalInfo.socialLinks.map((l) => (
-              <ExtLink key={l.id} href={l.url}>{l.label || l.url}</ExtLink>
-            )),
-          ]
-            .filter(Boolean)
-            .reduce<React.ReactNode[]>((acc, item, i) => {
-              if (i > 0) acc.push(<span key={`sp${i}`}> &nbsp;·&nbsp; </span>);
-              acc.push(item);
-              return acc;
-            }, [])}
-        </p>
+      <div style={{ marginBottom: "5mm", borderBottom: `1px solid ${C.text}`, paddingBottom: "3mm", display: "flex", alignItems: "center", gap: "6mm" }}>
+        {/* Profile Photo (optional) */}
+        {personalInfo.profileImage && (
+          <div
+            style={{
+              width: "20mm",
+              height: "20mm",
+              borderRadius: "3mm",
+              overflow: "hidden",
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={personalInfo.profileImage}
+              alt={personalInfo.fullName}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          </div>
+        )}
+        
+        {/* Name and Contact */}
+        <div style={{ flex: 1 }}>
+          <h1 style={{ fontSize: "20pt", fontWeight: 300, margin: 0, color: C.text, letterSpacing: "1px" }}>
+            {personalInfo.fullName?.toUpperCase() || "YOUR NAME"}
+          </h1>
+          <p style={{ fontSize: "10pt", color: C.textMuted, margin: "1.5mm 0 0 0" }}>{personalInfo.title}</p>
+          <p style={{ fontSize: "8.5pt", color: C.textLight, margin: "2mm 0 0 0" }}>
+            {[
+              personalInfo.email && <ExtLink key="email" href={`mailto:${personalInfo.email}`}>{personalInfo.email}</ExtLink>,
+              personalInfo.phone,
+              personalInfo.location,
+              ...personalInfo.socialLinks.map((l) => (
+                <ExtLink key={l.id} href={l.url}>{l.label || l.url}</ExtLink>
+              )),
+            ]
+              .filter(Boolean)
+              .reduce<React.ReactNode[]>((acc, item, i) => {
+                if (i > 0) acc.push(<span key={`sp${i}`}> &nbsp;·&nbsp; </span>);
+                acc.push(item);
+                return acc;
+              }, [])}
+          </p>
+        </div>
       </div>
 
       {personalInfo.bio && (

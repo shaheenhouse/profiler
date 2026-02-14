@@ -2,16 +2,25 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import type { User, Portfolio, RegisterUserInput } from '@/types/portfolio';
+import {
+  readBlobJson,
+  writeBlobJson,
+  deleteBlobJson,
+  listPortfolioBlobs,
+  isBlobConfigured,
+} from './blob-storage';
 
-// Data directory - in production, this should be a persistent storage location
-// For Vercel, consider using Vercel Blob, KV, or an external storage service
+// Detect if we're running on Vercel with Blob storage configured
+const USE_BLOB_STORAGE = isBlobConfigured();
+
+// Data directory - only used for local development
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const PORTFOLIOS_DIR = path.join(DATA_DIR, 'portfolios');
 
-// Ensure directories exist
+// Ensure directories exist (only for local development)
 async function ensureDirectories() {
+  if (USE_BLOB_STORAGE) return; // Skip for Vercel Blob
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.mkdir(PORTFOLIOS_DIR, { recursive: true });
@@ -21,7 +30,12 @@ async function ensureDirectories() {
 }
 
 // Initialize storage
-ensureDirectories();
+if (!USE_BLOB_STORAGE) {
+  ensureDirectories();
+}
+
+// Log storage mode on startup
+console.log(`[Storage] Using ${USE_BLOB_STORAGE ? 'Vercel Blob' : 'Local File System'} storage`);
 
 // ============ PASSWORD UTILITIES ============
 
@@ -41,6 +55,11 @@ export function verifyPassword(password: string, hashedPassword: string): boolea
 
 export async function getUsers(): Promise<User[]> {
   try {
+    if (USE_BLOB_STORAGE) {
+      const users = await readBlobJson<User[]>('users');
+      return users || [];
+    }
+    
     await ensureDirectories();
     const data = await fs.readFile(USERS_FILE, 'utf-8');
     return JSON.parse(data);
@@ -66,7 +85,6 @@ export async function getUserByUsername(username: string): Promise<User | null> 
 }
 
 export async function createUser(input: RegisterUserInput): Promise<User> {
-  await ensureDirectories();
   const users = await getUsers();
   
   const newUser: User = {
@@ -86,7 +104,13 @@ export async function createUser(input: RegisterUserInput): Promise<User> {
   };
   
   users.push(newUser);
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
+  
+  if (USE_BLOB_STORAGE) {
+    await writeBlobJson('users', users);
+  } else {
+    await ensureDirectories();
+    await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
+  }
   
   return newUser;
 }
@@ -119,7 +143,12 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
     updatedAt: new Date().toISOString(),
   };
   
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
+  if (USE_BLOB_STORAGE) {
+    await writeBlobJson('users', users);
+  } else {
+    await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
+  }
+  
   return users[index];
 }
 
@@ -131,6 +160,10 @@ function getPortfolioFilePath(userId: string): string {
 
 export async function getPortfolioByUserId(userId: string): Promise<Portfolio | null> {
   try {
+    if (USE_BLOB_STORAGE) {
+      return await readBlobJson<Portfolio>('portfolio', userId);
+    }
+    
     await ensureDirectories();
     const filePath = getPortfolioFilePath(userId);
     const data = await fs.readFile(filePath, 'utf-8');
@@ -142,6 +175,22 @@ export async function getPortfolioByUserId(userId: string): Promise<Portfolio | 
 
 export async function getPortfolioBySlug(slug: string, requirePublic: boolean = false): Promise<Portfolio | null> {
   try {
+    if (USE_BLOB_STORAGE) {
+      // Get list of all portfolio IDs
+      const userIds = await listPortfolioBlobs();
+      
+      for (const userId of userIds) {
+        const portfolio = await readBlobJson<Portfolio>('portfolio', userId);
+        if (portfolio && portfolio.slug === slug) {
+          if (requirePublic && !portfolio.isPublic) {
+            return null;
+          }
+          return portfolio;
+        }
+      }
+      return null;
+    }
+    
     await ensureDirectories();
     const files = await fs.readdir(PORTFOLIOS_DIR);
     
@@ -167,9 +216,13 @@ export async function getPortfolioBySlug(slug: string, requirePublic: boolean = 
 }
 
 export async function createPortfolio(portfolio: Portfolio): Promise<Portfolio> {
-  await ensureDirectories();
-  const filePath = getPortfolioFilePath(portfolio.userId);
-  await fs.writeFile(filePath, JSON.stringify(portfolio, null, 2));
+  if (USE_BLOB_STORAGE) {
+    await writeBlobJson('portfolio', portfolio, portfolio.userId);
+  } else {
+    await ensureDirectories();
+    const filePath = getPortfolioFilePath(portfolio.userId);
+    await fs.writeFile(filePath, JSON.stringify(portfolio, null, 2));
+  }
   return portfolio;
 }
 
@@ -184,14 +237,22 @@ export async function updatePortfolio(userId: string, updates: Partial<Portfolio
     updatedAt: new Date().toISOString(),
   };
   
-  const filePath = getPortfolioFilePath(userId);
-  await fs.writeFile(filePath, JSON.stringify(updatedPortfolio, null, 2));
+  if (USE_BLOB_STORAGE) {
+    await writeBlobJson('portfolio', updatedPortfolio, userId);
+  } else {
+    const filePath = getPortfolioFilePath(userId);
+    await fs.writeFile(filePath, JSON.stringify(updatedPortfolio, null, 2));
+  }
   
   return updatedPortfolio;
 }
 
 export async function deletePortfolio(userId: string): Promise<boolean> {
   try {
+    if (USE_BLOB_STORAGE) {
+      return await deleteBlobJson('portfolio', userId);
+    }
+    
     const filePath = getPortfolioFilePath(userId);
     await fs.unlink(filePath);
     return true;
@@ -204,6 +265,20 @@ export async function deletePortfolio(userId: string): Promise<boolean> {
 
 export async function isSlugAvailable(slug: string, excludeUserId?: string): Promise<boolean> {
   try {
+    if (USE_BLOB_STORAGE) {
+      const userIds = await listPortfolioBlobs();
+      
+      for (const userId of userIds) {
+        if (excludeUserId && userId === excludeUserId) continue;
+        
+        const portfolio = await readBlobJson<Portfolio>('portfolio', userId);
+        if (portfolio && portfolio.slug === slug) {
+          return false;
+        }
+      }
+      return true;
+    }
+    
     await ensureDirectories();
     const files = await fs.readdir(PORTFOLIOS_DIR);
     
@@ -230,6 +305,19 @@ export async function isSlugAvailable(slug: string, excludeUserId?: string): Pro
 
 export async function getAllPublicPortfolios(): Promise<Portfolio[]> {
   try {
+    if (USE_BLOB_STORAGE) {
+      const userIds = await listPortfolioBlobs();
+      const portfolios: Portfolio[] = [];
+      
+      for (const userId of userIds) {
+        const portfolio = await readBlobJson<Portfolio>('portfolio', userId);
+        if (portfolio && portfolio.isPublic) {
+          portfolios.push(portfolio);
+        }
+      }
+      return portfolios;
+    }
+    
     await ensureDirectories();
     const files = await fs.readdir(PORTFOLIOS_DIR);
     const portfolios: Portfolio[] = [];

@@ -159,19 +159,30 @@ export default function DesignCanvas({
       canvas.add(artboard);
       artboardRef.current = artboard;
 
-      // Center artboard in viewport
-      const fitZoom = Math.min((cw - 60) / width, (ch - 60) / height, 1);
+      // Center artboard in viewport with proper zoom to fit
+      const padding = 60;
+      const fitZoom = Math.min((cw - padding) / width, (ch - padding) / height, 0.9);
       const vpw = width * fitZoom;
       const vph = height * fitZoom;
       canvas.viewportTransform = [fitZoom, 0, 0, fitZoom, (cw - vpw) / 2, (ch - vph) / 2];
 
-      // Resize canvas when container resizes
+      // Resize canvas when container resizes and re-center artboard
       const ro = new ResizeObserver((entries) => {
         const entry = entries[0];
         if (entry && fabricRef.current) {
           const { width: rw, height: rh } = entry.contentRect;
           if (rw > 0 && rh > 0) {
             fabricRef.current.setDimensions({ width: rw, height: rh });
+            // Re-center the artboard on resize
+            const dw = designWidthRef.current;
+            const dh = designHeightRef.current;
+            const padding = 60;
+            const z = Math.min((rw - padding) / dw, (rh - padding) / dh, 0.9);
+            fabricRef.current.viewportTransform = [
+              z, 0, 0, z,
+              (rw - dw * z) / 2,
+              (rh - dh * z) / 2,
+            ];
             fabricRef.current.requestRenderAll();
           }
         }
@@ -1387,7 +1398,8 @@ export default function DesignCanvas({
           const canvasH = fabricRef.current.height || 800;
           const dw = designWidthRef.current;
           const dh = designHeightRef.current;
-          const zoom = Math.min((canvasW - 60) / dw, (canvasH - 60) / dh, 1);
+          const padding = 60;
+          const zoom = Math.min((canvasW - padding) / dw, (canvasH - padding) / dh, 0.9);
           fabricRef.current.viewportTransform = [
             zoom, 0, 0, zoom,
             (canvasW - dw * zoom) / 2,
@@ -1686,14 +1698,26 @@ export default function DesignCanvas({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update design dimensions and artboard when props change
+  // Update design dimensions and artboard when props change + re-center
   useEffect(() => {
     designWidthRef.current = width;
     designHeightRef.current = height;
-    if (artboardRef.current) {
+    if (artboardRef.current && fabricRef.current) {
       (artboardRef.current as any).set({ width, height });
       artboardRef.current.setCoords();
-      fabricRef.current?.requestRenderAll();
+
+      // Re-center the artboard with zoom to fit
+      const canvas = fabricRef.current;
+      const canvasW = canvas.width || 1200;
+      const canvasH = canvas.height || 800;
+      const padding = 60;
+      const zoom = Math.min((canvasW - padding) / width, (canvasH - padding) / height, 1);
+      canvas.viewportTransform = [
+        zoom, 0, 0, zoom,
+        (canvasW - width * zoom) / 2,
+        (canvasH - height * zoom) / 2,
+      ];
+      canvas.requestRenderAll();
     }
   }, [width, height]);
 

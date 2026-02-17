@@ -36,6 +36,7 @@ import { ProjectsSection } from "@/components/dashboard/projects-section";
 import { CertificationsSection } from "@/components/dashboard/certifications-section";
 import { ResumeModal } from "@/components/resume/resume-modal";
 import { ResumeEditor } from "@/components/resume/resume-editor";
+import { AIResumeImport } from "@/components/dashboard/ai-resume-import";
 
 interface DashboardContentProps {
   portfolio: Portfolio;
@@ -320,7 +321,11 @@ export function DashboardContent({ portfolio: initialPortfolio, user }: Dashboar
             ))}
           </TabsList>
 
-          <TabsContent value="personal" className="mt-6">
+          <TabsContent value="personal" className="mt-6 space-y-6">
+            <AIResumeImport
+              portfolio={portfolio}
+              onImport={(updates) => setPortfolio({ ...portfolio, ...updates })}
+            />
             <PersonalInfoForm portfolio={portfolio} onUpdate={setPortfolio} />
           </TabsContent>
 

@@ -22,6 +22,7 @@ async function uploadToBlob(blobPath: string, content: string | Buffer, contentT
       access: 'public',
       contentType,
       addRandomSuffix: false,
+      allowOverwrite: true, // Allow re-running migration
     });
     console.log(`  ✓ Uploaded: ${blobPath}`);
     return blob.url;
@@ -172,6 +173,7 @@ async function updatePortfolioImageUrls(imageUrls: Record<string, string>) {
           access: 'public',
           contentType: 'application/json',
           addRandomSuffix: false,
+          allowOverwrite: true,
         });
       }
     } catch (error) {

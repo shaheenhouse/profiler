@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  phone       String?
+  whatsapp    String?
+  linkedinUrl String?  @map("linkedin_url")
+  githubUrl   String?  @map("github_url")
+  image       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  portfolio Portfolio?
+  designs   Design[]
+
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+model Portfolio {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  slug           String   @unique
+  isPublic       Boolean  @default(false) @map("is_public")
+  theme          String   @default("dark")
+  personalInfo   Json     @default("{}") @map("personal_info")
+  education      Json     @default("[]")
+  experience     Json     @default("[]")
+  skills         Json     @default("[]")
+  roles          Json     @default("[]")
+  certifications Json     @default("[]")
+  projects       Json     @default("[]")
+  achievements   Json     @default("[]")
+  languages      Json     @default("[]")
+  resumes        Json     @default("[]")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([slug])
+  @@index([isPublic])
+  @@map("portfolios")
+}
+
+model Design {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  name       String   @default("Untitled Design")
+  width      Int      @default(1080)
+  height     Int      @default(1080)
+  canvasJson String   @default("{}") @map("canvas_json") @db.Text
+  thumbnail  String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("designs")
+}

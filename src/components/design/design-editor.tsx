@@ -40,6 +40,8 @@ export function DesignEditor({
   const [activeTool, setActiveTool] = useState<ToolType>("select");
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
   const [designName, setDesignName] = useState(initialName);
+  const [designWidth, setDesignWidth] = useState(initialWidth);
+  const [designHeight, setDesignHeight] = useState(initialHeight);
   const [zoom, setZoom] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
@@ -57,7 +59,6 @@ export function DesignEditor({
           api.loadJSON(initialCanvasJSON);
         }, 300);
       }
-      // Auto-fit canvas to viewport
       setTimeout(() => api.zoomToFit(), 400);
     },
     [initialCanvasJSON]
@@ -71,6 +72,15 @@ export function DesignEditor({
 
   const handleZoomChange = useCallback((z: number) => {
     setZoom(z);
+  }, []);
+
+  // Handle design size change
+  const handleSizeChange = useCallback((w: number, h: number) => {
+    setDesignWidth(w);
+    setDesignHeight(h);
+    setTimeout(() => {
+      canvasAPIRef.current?.zoomToFit();
+    }, 100);
   }, []);
 
   // Keyboard shortcuts
@@ -155,7 +165,6 @@ export function DesignEditor({
   // Right-click context menu
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
-      // Only show on the canvas area
       const target = e.target as HTMLElement;
       if (target.closest(".canvas-area") || target.tagName === "CANVAS") {
         e.preventDefault();
@@ -177,7 +186,7 @@ export function DesignEditor({
         const res = await fetch(`/api/designs/${currentDesignId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: designName, canvasJSON, thumbnail }),
+          body: JSON.stringify({ name: designName, width: designWidth, height: designHeight, canvasJSON, thumbnail }),
         });
         if (!res.ok) throw new Error("Failed to save");
       } else {
@@ -186,8 +195,8 @@ export function DesignEditor({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: designName,
-            width: initialWidth,
-            height: initialHeight,
+            width: designWidth,
+            height: designHeight,
             canvasJSON,
             thumbnail,
           }),
@@ -233,8 +242,9 @@ export function DesignEditor({
         isSaving={isSaving}
         lastSaved={lastSaved}
         onSave={handleSave}
-        canvasWidth={initialWidth}
-        canvasHeight={initialHeight}
+        canvasWidth={designWidth}
+        canvasHeight={designHeight}
+        onSizeChange={handleSizeChange}
       />
 
       {/* Main content */}
@@ -245,13 +255,15 @@ export function DesignEditor({
           activeTool={activeTool}
           onToolChange={setActiveTool}
           onOpenTemplates={() => setShowTemplates(true)}
+          designWidth={designWidth}
+          designHeight={designHeight}
         />
 
         {/* Canvas Area */}
         <div className="flex-1 overflow-auto canvas-area">
           <DesignCanvas
-            width={initialWidth}
-            height={initialHeight}
+            width={designWidth}
+            height={designHeight}
             onSelectionChange={handleSelectionChange}
             onCanvasModified={handleCanvasModified}
             onZoomChange={handleZoomChange}

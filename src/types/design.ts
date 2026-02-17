@@ -45,6 +45,7 @@ export const DESIGN_SIZES: DesignSize[] = [
 
 export type ToolType =
   | "select"
+  | "ai"
   | "text"
   | "shapes"
   | "flowchart"

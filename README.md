@@ -1,166 +1,249 @@
-# Portfolio Builder
+# 🎨 Portfolio & Resume Builder with Design Studio
 
-A beautiful, modern portfolio builder application built with Next.js 14, Tailwind CSS, and shadcn/ui. Create stunning portfolios and resumes with ease.
+A modern, full-featured portfolio builder with an integrated design studio, AI-powered features, and professional resume templates.
 
-## Features
+## ✨ Features
 
-- **Beautiful UI**: Modern, responsive design with smooth animations using Framer Motion
-- **Dark/Light Mode**: Seamless theme switching with next-themes
-- **Google OAuth**: Secure authentication with NextAuth.js
-- **File-based Storage**: No database required - all data stored in JSON files
-- **Resume Builder**: Complete resume with education, experience, skills, projects, and certifications
-- **Public Portfolio**: Shareable portfolio URL for each user
-- **Particle Effects**: Interactive particle background using tsparticles
+- 🎨 **Design Studio** - Fabric.js-based canvas editor with AI design generation
+- 📄 **Resume Builder** - Multiple templates with PDF export
+- 🤖 **AI Integration** - OpenAI-powered design generation and resume data extraction
+- 🔐 **Authentication** - NextAuth.js with credentials provider
+- 💾 **Database** - Prisma ORM with Supabase PostgreSQL
+- 📦 **File Storage** - Vercel Blob for images and design thumbnails
+- 🚀 **SEO Optimized** - Dynamic metadata, sitemap, robots.txt, Open Graph
+- 🎯 **Public Portfolios** - Shareable portfolio pages with custom slugs
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui (Radix UI primitives)
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript 5
+- **UI Library**: React 19
+- **Styling**: Tailwind CSS 4 + shadcn/ui
+- **Database**: Prisma + Supabase PostgreSQL
+- **Storage**: Vercel Blob
+- **Auth**: NextAuth.js
+- **Canvas**: Fabric.js 7
+- **AI**: OpenAI (GPT-4o, GPT-4o-mini)
 - **Animations**: Framer Motion
-- **Authentication**: NextAuth.js with Google OAuth
-- **Data Storage**: File-based JSON storage
-- **Particles**: tsparticles
 
-## Getting Started
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm or yarn
+- Node.js 18+ installed
+- A Supabase account (free tier works!)
+- An OpenAI API key (optional - for AI features)
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd profilerv2
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+
+   Copy `.env.example` to `.env.local` and fill in your values:
+   ```env
+   # NextAuth
+   NEXTAUTH_URL=http://localhost:3000
+   NEXTAUTH_SECRET=your-secret-key
+   
+   # Supabase
+   NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   
+   # Prisma (also add to .env)
+   DATABASE_URL=your-database-url
+   DIRECT_URL=your-direct-url
+   
+   # Vercel Blob
+   BLOB_READ_WRITE_TOKEN=your-blob-token
+   
+   # OpenAI (optional)
+   OPENAI_API_KEY=your-openai-key
+   ```
+
+4. **Set up the database**
+   ```bash
+   # Generate Prisma Client
+   npm run db:generate
+   
+   # Run migrations (creates tables)
+   npm run db:migrate
+   
+   # Seed with initial data
+   npm run db:seed
+   ```
+
+5. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## 📚 Documentation
+
+- **[Prisma Setup Guide](./PRISMA_SETUP.md)** - Complete guide to the database setup
+- **[AI Integration](./docs/AI.md)** - How to use AI features (coming soon)
+- **[Design Studio](./docs/DESIGN_STUDIO.md)** - Canvas editor guide (coming soon)
+
+## 🗄️ Database Commands
+
 ```bash
-cd portfolio-app
+# Generate Prisma Client (after schema changes)
+npm run db:generate
+
+# Create and apply migrations
+npm run db:migrate
+
+# Seed the database
+npm run db:seed
+
+# Open Prisma Studio (visual database browser)
+npm run db:studio
+
+# Push schema changes (dev only, no migration files)
+npm run db:push
 ```
 
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Copy the environment example file:
-```bash
-cp .env.example .env.local
-```
-
-4. Configure your environment variables in `.env.local`:
-```env
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-super-secret-key
-
-# Get these from Google Cloud Console
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-```
-
-### Setting up Google OAuth
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Go to "APIs & Services" > "Credentials"
-4. Click "Create Credentials" > "OAuth client ID"
-5. Select "Web application"
-6. Add authorized redirect URIs:
-   - `http://localhost:3000/api/auth/callback/google` (development)
-   - `https://yourdomain.com/api/auth/callback/google` (production)
-7. Copy the Client ID and Client Secret to your `.env.local`
-
-### Running the Development Server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## Data Storage
-
-All data is stored in the `/data` directory:
-- `users.json` - User account information
-- `portfolios/{userId}.json` - Individual portfolio data
-
-### Production Deployment
-
-For production deployment on platforms like Vercel:
-
-**Important**: The default file-based storage is ephemeral on serverless platforms. For persistent storage, consider:
-
-1. **Vercel Blob Storage** - Add Vercel Blob for persistent file storage
-2. **External File Storage** - Use AWS S3, Cloudflare R2, or similar
-3. **Database** - Upgrade to a database like PostgreSQL, MongoDB, or PlanetScale
-
-To use Vercel Blob, modify the storage layer in `src/lib/storage.ts`.
-
-## Project Structure
+## 🏗️ Project Structure
 
 ```
-portfolio-app/
-├── data/                    # Data storage directory
-├── public/                  # Static assets
+profilerv2/
 ├── src/
-│   ├── actions/             # Server actions
 │   ├── app/                 # Next.js App Router pages
-│   │   ├── api/             # API routes
-│   │   ├── auth/            # Authentication pages
-│   │   ├── dashboard/       # Dashboard pages
-│   │   └── p/[slug]/        # Public portfolio pages
-│   ├── components/          # React components
-│   │   ├── dashboard/       # Dashboard components
-│   │   ├── portfolio/       # Public portfolio components
-│   │   ├── providers/       # Context providers
-│   │   ├── resume/          # Resume components
-│   │   └── ui/              # UI components (shadcn/ui)
-│   ├── lib/                 # Utility functions
-│   └── types/               # TypeScript types
-├── .env.example             # Environment variables example
-├── package.json
-├── tailwind.config.ts
-└── tsconfig.json
+│   │   ├── api/            # API routes
+│   │   ├── auth/           # Auth pages (signin, register)
+│   │   ├── dashboard/      # User dashboard
+│   │   ├── design/         # Design studio
+│   │   └── p/              # Public portfolio pages
+│   ├── components/         # React components
+│   │   ├── dashboard/      # Dashboard components
+│   │   ├── design/         # Design studio components
+│   │   ├── portfolio/      # Portfolio components
+│   │   └── ui/             # shadcn/ui components
+│   ├── lib/                # Utility libraries
+│   │   ├── prisma.ts       # Prisma client singleton
+│   │   ├── storage.ts      # User & portfolio storage
+│   │   ├── design-storage.ts # Design storage
+│   │   ├── openai.ts       # AI integration
+│   │   └── blob-storage.ts # Vercel Blob utilities
+│   └── types/              # TypeScript type definitions
+├── prisma/
+│   ├── schema.prisma       # Database schema
+│   ├── seed.ts             # Seed script
+│   └── migrations/         # Migration history
+├── data/                   # Local data files (for seeding)
+│   ├── users.json
+│   └── portfolios/
+└── public/                 # Static assets
 ```
 
-## Portfolio Sections
+## 🎨 Design Studio Features
 
-- **Personal Information**: Name, title, bio, contact details, social links
-- **Education**: Degree, institution, field of study, dates, GPA
-- **Experience**: Job title, company, responsibilities, technologies used
-- **Skills**: Technical skills by category with proficiency levels
-- **Professional Roles**: Your expertise areas
-- **Projects**: Showcase your work with descriptions and links
-- **Certifications**: Professional certifications and credentials
+- ✅ Multiple canvas sizes (preset + custom)
+- ✅ Add text with custom fonts and styling
+- ✅ Add shapes (rectangle, circle, triangle, etc.)
+- ✅ Add images from upload or URL
+- ✅ Add SVG icons
+- ✅ Layers panel with reordering
+- ✅ Alignment tools
+- ✅ Color picker
+- ✅ Export as PNG/JPG/PDF
+- ✅ Save designs to database
+- ✅ **AI Design Generation** - Generate designs from text prompts
+- ✅ **AI Reference Image** - Upload an image and AI recreates it as editable canvas objects
 
-## Customization
+## 🤖 AI Features
 
-### Theming
+### Design Studio AI
 
-Modify the theme colors in `src/app/globals.css`:
+1. **Text-to-Design**: Enter a prompt like "Instagram post for a coffee shop" and AI generates a complete design
+2. **Image-to-Design**: Upload a reference image and AI recreates it with editable Fabric.js objects
 
-```css
-:root {
-  --primary: 221.2 83.2% 53.3%;
-  /* ... other variables */
-}
+### Resume AI Extraction
 
-.dark {
-  --primary: 217.2 91.2% 59.8%;
-  /* ... other variables */
-}
+Upload a resume (PDF, image, or paste text) and AI automatically extracts and populates:
+- Personal information
+- Work experience
+- Education
+- Skills
+- Projects
+- And more!
+
+## 🔒 Authentication
+
+The app uses NextAuth.js with a credentials provider. Users can:
+- Register with email/username and password
+- Sign in with email/username
+- Passwords are hashed with PBKDF2
+- Session management with JWT
+
+## 📄 Resume Templates
+
+Three professional templates included:
+1. **Modern** - Clean, minimalist design
+2. **Professional** - Traditional corporate style
+3. **Creative** - Bold, colorful layout
+
+Export to PDF with a single click!
+
+## 🌐 Public Portfolios
+
+Users can:
+- Create a custom slug (e.g., `/p/johndoe`)
+- Toggle portfolio visibility (public/private)
+- Share their portfolio URL
+- Display all their work experience, education, skills, projects, etc.
+
+## 🚢 Deployment
+
+### Vercel (Recommended)
+
+1. Push your code to GitHub
+2. Import project in Vercel
+3. Add environment variables
+4. Deploy!
+
+Vercel automatically:
+- Runs `prisma generate` during build
+- Handles serverless functions
+- Provides Blob storage
+
+### Running Migrations in Production
+
+```bash
+npx prisma migrate deploy
 ```
 
-### Adding New Sections
+Or set up automatic migrations in your CI/CD pipeline.
 
-1. Define the type in `src/types/portfolio.ts`
-2. Add server actions in `src/actions/portfolio.ts`
-3. Create the dashboard component in `src/components/dashboard/`
-4. Add the section to `src/components/portfolio/public-portfolio.tsx`
-5. Update the resume modal in `src/components/resume/resume-modal.tsx`
+## 🤝 Contributing
 
-## License
+Contributions are welcome! Please read our contributing guidelines first.
 
-MIT License - feel free to use this project for personal or commercial purposes.
+## 📝 License
 
-## Contributing
+MIT License - see LICENSE file for details
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 🙏 Acknowledgments
+
+- [Next.js](https://nextjs.org/)
+- [Prisma](https://www.prisma.io/)
+- [Supabase](https://supabase.com/)
+- [Fabric.js](http://fabricjs.com/)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [OpenAI](https://openai.com/)
+
+---
+
+**Built with ❤️ by Almas Khan**

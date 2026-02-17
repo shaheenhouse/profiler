@@ -59,6 +59,10 @@ import {
   Workflow,
   GitBranch,
   Cable,
+  Wand2,
+  ImagePlus,
+  Send,
+  X,
 } from "lucide-react";
 import type { DesignCanvasAPI } from "./design-canvas";
 import type { ToolType } from "@/types/design";
@@ -68,6 +72,8 @@ interface DesignToolbarProps {
   activeTool: ToolType;
   onToolChange: (tool: ToolType) => void;
   onOpenTemplates: () => void;
+  designWidth?: number;
+  designHeight?: number;
 }
 
 const PRESET_COLORS = [
@@ -162,7 +168,7 @@ interface StockPhoto {
   height: number;
 }
 
-export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTemplates }: DesignToolbarProps) {
+export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTemplates, designWidth = 1080, designHeight = 1080 }: DesignToolbarProps) {
   const [bgColor, setBgColor] = useState("#ffffff");
   const [drawColor, setDrawColor] = useState("#333333");
   const [drawWidth, setDrawWidth] = useState(3);
@@ -178,6 +184,14 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
   // Stock photos state
   const [stockPhotos, setStockPhotos] = useState<StockPhoto[]>([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
+
+  // AI Design state
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiRefImage, setAiRefImage] = useState<string | null>(null);
+  const [aiRefImageName, setAiRefImageName] = useState("");
+  const aiImageInputRef = useRef<HTMLInputElement>(null);
   const [photoPage, setPhotoPage] = useState(1);
 
   // Image search state
@@ -368,9 +382,53 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
     }
   };
 
+  // AI Design generation handler
+  const handleAiGenerate = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const res = await fetch("/api/ai/design", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: aiPrompt.trim(),
+          width: designWidth,
+          height: designHeight,
+          referenceImage: aiRefImage,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate design");
+      if (data.designJSON) {
+        canvasRef.current?.loadJSON(data.designJSON);
+        setAiPrompt("");
+        setAiRefImage(null);
+        setAiRefImageName("");
+      }
+    } catch (err: any) {
+      setAiError(err.message || "Generation failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAiRefImage(reader.result as string);
+      setAiRefImageName(file.name);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   // Toolbar buttons
   const tools = [
     { id: "select" as ToolType, icon: MousePointer2, label: "Select" },
+    { id: "ai" as ToolType, icon: Wand2, label: "AI Design" },
     { id: "templates" as ToolType, icon: LayoutTemplate, label: "Templates" },
     { id: "text" as ToolType, icon: Type, label: "Text" },
     { id: "shapes" as ToolType, icon: Square, label: "Shapes" },
@@ -1160,6 +1218,131 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
                 <Trash2 className="w-3.5 h-3.5 mr-2" />
                 Delete Selected
               </Button>
+            </div>
+          </div>
+        );
+
+      case "ai":
+        return (
+          <div className="p-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-purple-500" />
+              <h3 className="font-semibold text-sm">AI Design Generator</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Describe your design and AI will create it with editable Fabric.js objects. Everything will be movable and editable!
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Describe your design</Label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="e.g. YouTube thumbnail with bold title 'AI IS HERE', dark gradient background, tech-style decorative elements..."
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[100px] resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      handleAiGenerate();
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Reference Image Upload */}
+              <div>
+                <Label className="text-xs">Reference Image (optional)</Label>
+                <p className="text-[10px] text-muted-foreground mb-1.5">Upload an image and AI will recreate it as editable canvas elements</p>
+                <input
+                  ref={aiImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAiImageUpload}
+                />
+                {aiRefImage ? (
+                  <div className="relative border rounded-lg overflow-hidden">
+                    <img src={aiRefImage} alt="Reference" className="w-full h-32 object-cover" />
+                    <div className="absolute top-1 right-1 flex gap-1">
+                      <button
+                        onClick={() => { setAiRefImage(null); setAiRefImageName(""); }}
+                        className="bg-black/70 text-white rounded-full p-1 hover:bg-black/90"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-2 py-1 truncate">
+                      {aiRefImageName}
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-16 border-dashed flex flex-col gap-1"
+                    onClick={() => aiImageInputRef.current?.click()}
+                  >
+                    <ImagePlus className="w-4 h-4" />
+                    <span className="text-xs">Upload reference</span>
+                  </Button>
+                )}
+              </div>
+
+              <div className="rounded-lg bg-muted/50 p-2 text-[10px] text-muted-foreground">
+                <strong>Canvas size:</strong> {designWidth} x {designHeight}px
+              </div>
+
+              {aiError && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-2 text-xs text-destructive">
+                  {aiError}
+                </div>
+              )}
+
+              <Button
+                className="w-full gap-2"
+                onClick={handleAiGenerate}
+                disabled={aiLoading || !aiPrompt.trim()}
+              >
+                {aiLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Generate Design
+                  </>
+                )}
+              </Button>
+
+              {aiLoading && (
+                <p className="text-[10px] text-muted-foreground text-center animate-pulse">
+                  AI is creating your design with editable elements...
+                </p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <h4 className="font-semibold text-xs">Quick Prompts</h4>
+              {[
+                "Modern social media post with bold typography and gradient background",
+                "Professional business card design with clean layout",
+                "YouTube thumbnail with exciting title and vibrant colors",
+                "Instagram story with quote and decorative elements",
+                "Event flyer with date, time, and venue details",
+                "Product showcase with elegant presentation",
+              ].map((prompt) => (
+                <button
+                  key={prompt}
+                  className="w-full text-left text-xs px-3 py-2 rounded-md hover:bg-accent transition-colors border border-transparent hover:border-border"
+                  onClick={() => setAiPrompt(prompt)}
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           </div>
         );

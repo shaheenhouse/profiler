@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getDesign, updateDesign, deleteDesign, duplicateDesign } from "@/lib/design-storage";
+import { uploadDesignThumbnail, isBlobConfigured } from "@/lib/blob-storage";
 
-// GET /api/designs/[id] - Get a specific design
+// GET /api/designs/[id]
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,7 +32,7 @@ export async function GET(
   }
 }
 
-// PUT /api/designs/[id] - Update a design
+// PUT /api/designs/[id]
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -49,7 +50,21 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const updated = await updateDesign(id, body);
+    const { thumbnail, ...rest } = body;
+
+    // Upload thumbnail to Blob if it's base64
+    let thumbnailValue = thumbnail;
+    if (thumbnail && thumbnail.startsWith("data:") && isBlobConfigured()) {
+      const blobUrl = await uploadDesignThumbnail(id, thumbnail);
+      if (blobUrl) {
+        thumbnailValue = blobUrl;
+      }
+    }
+
+    const updated = await updateDesign(id, {
+      ...rest,
+      ...(thumbnailValue !== undefined ? { thumbnail: thumbnailValue } : {}),
+    });
 
     return NextResponse.json({ design: updated });
   } catch (error) {
@@ -58,7 +73,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/designs/[id] - Delete a design
+// DELETE /api/designs/[id]
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -82,7 +97,7 @@ export async function DELETE(
   }
 }
 
-// PATCH /api/designs/[id] - Duplicate a design
+// PATCH /api/designs/[id] - Duplicate
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -95,7 +110,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    
+
     if (body.action === "duplicate") {
       const duplicated = await duplicateDesign(id, session.user.id);
       if (!duplicated) {

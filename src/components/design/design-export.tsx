@@ -65,8 +65,35 @@ async function createExportCanvas(
 ) {
   const fabric = await import("fabric");
 
-  // Serialize the design from the main canvas (objects + background)
-  const jsonData = mainCanvas!.toJSON();
+  // Serialize with custom flags so we can remove non-export objects (artboard, helpers).
+  const jsonData = mainCanvas!.toJSON(["_isArtboard", "excludeFromExport"]) as any;
+
+  let detectedArtboardFill: string | null = null;
+  const objects = Array.isArray(jsonData.objects) ? jsonData.objects : [];
+  jsonData.objects = objects.filter((obj: any) => {
+    if (!obj) return false;
+
+    const isArtboardByFlag = obj._isArtboard === true;
+    const isArtboardByShape =
+      obj.type === "rect" &&
+      obj.left === 0 &&
+      obj.top === 0 &&
+      obj.width === canvasWidth &&
+      obj.height === canvasHeight &&
+      obj.selectable === false &&
+      obj.evented === false;
+
+    const isArtboard = isArtboardByFlag || isArtboardByShape;
+    if (isArtboard) {
+      if (typeof obj.fill === "string" && obj.fill) {
+        detectedArtboardFill = obj.fill;
+      }
+      return false;
+    }
+
+    // Respect explicit export opt-out.
+    return obj.excludeFromExport !== true;
+  });
 
   // Create an off-screen StaticCanvas with the exact design dimensions
   const tempEl = document.createElement("canvas");
@@ -75,13 +102,16 @@ async function createExportCanvas(
     height: canvasHeight,
   });
 
-  // Load the full design into the temp canvas
-  await tempCanvas.loadFromJSON(jsonData);
-
-  // Override background if requested
+  // Use detected artboard fill as export background (unless caller overrides it).
+  if (detectedArtboardFill) {
+    tempCanvas.backgroundColor = detectedArtboardFill;
+  }
   if (bgOverride !== undefined && bgOverride !== null) {
     tempCanvas.backgroundColor = bgOverride;
   }
+
+  // Load the full design into the temp canvas
+  await tempCanvas.loadFromJSON(jsonData);
 
   // Ensure identity viewport (no zoom/pan artifacts)
   tempCanvas.viewportTransform = [1, 0, 0, 1, 0, 0];

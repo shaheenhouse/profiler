@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import type { Canvas as FabricCanvas, Object as FabricObject } from "fabric";
+import * as fabricLib from "fabric";
 
 export interface DesignCanvasAPI {
   getCanvas: () => FabricCanvas | null;
@@ -39,13 +40,10 @@ export interface DesignCanvasAPI {
   setDrawingBrush: (options: { color?: string; width?: number }) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
-  // Image filters
   applyImageFilter: (filterType: string, value: number) => void;
   removeImageFilters: () => void;
   getImageFilters: () => Record<string, number>;
-  // Flowchart connection points
   setFlowchartMode: (enabled: boolean) => void;
-  // Connector / arrow styling
   updateConnectorStyle: (options: {
     color?: string;
     strokeWidth?: number;
@@ -90,31 +88,110 @@ export default function DesignCanvas({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const designWidthRef = useRef(width);
   const designHeightRef = useRef(height);
+  const centerTimersRef = useRef<number[]>([]);
+  const cssZoomRef = useRef(1);
+
+  // Stable ref for zoom change callback
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
 
   const saveToHistory = useCallback(() => {
     if (isLoadingRef.current || !fabricRef.current) return;
     const json = JSON.stringify(fabricRef.current.toJSON());
     historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
     historyRef.current.push(json);
-    if (historyRef.current.length > 50) {
+    if (historyRef.current.length > 100) {
       historyRef.current.shift();
     } else {
       historyIndexRef.current++;
     }
   }, []);
 
+  const clearCenteringTimers = useCallback(() => {
+    for (const t of centerTimersRef.current) window.clearTimeout(t);
+    centerTimersRef.current = [];
+  }, []);
+
+  // Center artboard using Fabric.js viewport transform.
+  // Canvas fills the entire workspace. VPT handles centering and zoom-to-fit.
+  const centerArtboard = useCallback((canvas: FabricCanvas, dw: number, dh: number) => {
+    const ww = wrapperRef.current?.clientWidth;
+    const wh = wrapperRef.current?.clientHeight;
+    if (!ww || !wh || ww < 10 || wh < 10) return;
+
+    // Canvas must fill the entire workspace
+    if (Math.abs(canvas.getWidth() - ww) > 1 || Math.abs(canvas.getHeight() - wh) > 1) {
+      canvas.setDimensions({ width: ww, height: wh });
+    }
+
+    // Calculate zoom to fit artboard with padding
+    const padding = 60;
+    const zoom = Math.min(
+      (ww - padding * 2) / dw,
+      (wh - padding * 2) / dh,
+      3
+    );
+
+    // Center the artboard in the workspace via viewport transform
+    const tx = (ww - dw * zoom) / 2;
+    const ty = (wh - dh * zoom) / 2;
+
+    // Clear any stale CSS transform/margins left by older implementations.
+    // Centering/zooming must be controlled only by Fabric viewport transform.
+    if (containerRef.current) {
+      containerRef.current.style.marginLeft = "0px";
+      containerRef.current.style.marginTop = "0px";
+      const fabricContainer =
+        (containerRef.current.querySelector('[data-fabric="wrapper"]') as HTMLElement) ||
+        (containerRef.current.querySelector(".canvas-container") as HTMLElement);
+      if (fabricContainer) {
+        fabricContainer.style.transform = "";
+        fabricContainer.style.transformOrigin = "";
+      }
+    }
+
+    cssZoomRef.current = zoom;
+    canvas.setViewportTransform([zoom, 0, 0, zoom, tx, ty]);
+    console.log(`[VPT-DBG] set tx=${tx.toFixed(1)} ty=${ty.toFixed(1)} vpt=${(canvas.viewportTransform || []).join(",")}`);
+    requestAnimationFrame(() => {
+      console.log(`[VPT-DBG] raf vpt=${(canvas.viewportTransform || []).join(",")}`);
+    });
+    canvas.requestRenderAll();
+    onZoomChangeRef.current?.(zoom);
+  }, []);
+
+  // Schedule centering attempts - layout may not be ready immediately
+  const scheduleCenteringBurst = useCallback((canvas: FabricCanvas, dw: number, dh: number) => {
+    clearCenteringTimers();
+    // First attempt: immediate
+    centerArtboard(canvas, dw, dh);
+    // Retry with requestAnimationFrame for next paint
+    const raf = requestAnimationFrame(() => {
+      if (!fabricRef.current) return;
+      centerArtboard(canvas, dw, dh);
+    });
+    centerTimersRef.current.push(raf as unknown as number);
+    // Additional retries to catch late layout shifts
+    for (const ms of [100, 300, 600]) {
+      const timer = window.setTimeout(() => {
+        if (!fabricRef.current) return;
+        centerArtboard(canvas, dw, dh);
+      }, ms);
+      centerTimersRef.current.push(timer);
+    }
+  }, [clearCenteringTimers, centerArtboard]);
+
   useEffect(() => {
     let isMounted = true;
     let canvasEl: HTMLCanvasElement | null = null;
 
     const initCanvas = async () => {
-      const fabric = await import("fabric");
+      const fabric = fabricLib;
       if (!isMounted || !containerRef.current) return;
 
       canvasEl = document.createElement("canvas");
       containerRef.current.appendChild(canvasEl);
 
-      // Use container dimensions so canvas fills workspace
       const cw = wrapperRef.current?.clientWidth || width + 200;
       const ch = wrapperRef.current?.clientHeight || height + 200;
 
@@ -125,6 +202,9 @@ export default function DesignCanvas({
         preserveObjectStacking: true,
         selection: true,
         controlsAboveOverlay: true,
+        fireRightClick: true,
+        stopContextMenu: true,
+        enableRetinaScaling: false,
       });
 
       if (!isMounted) {
@@ -135,13 +215,15 @@ export default function DesignCanvas({
 
       fabricRef.current = canvas;
 
-      // Create artboard — the white "design page" that zooms with content
+      // Create artboard with shadow
       const artboard = new fabric.Rect({
-        left: 0,
-        top: 0,
+        left: 200,
+        top: 120,
         width,
         height,
         fill: "#ffffff",
+        stroke: "#d1d5db",
+        strokeWidth: 1,
         selectable: false,
         evented: false,
         excludeFromExport: true,
@@ -149,8 +231,8 @@ export default function DesignCanvas({
       } as any);
       try {
         (artboard as any).shadow = new fabric.Shadow({
-          color: "rgba(0,0,0,0.12)",
-          blur: 15,
+          color: "rgba(0,0,0,0.15)",
+          blur: 20,
           offsetX: 0,
           offsetY: 4,
         });
@@ -159,61 +241,68 @@ export default function DesignCanvas({
       canvas.add(artboard);
       artboardRef.current = artboard;
 
-      // Center artboard in viewport with proper zoom to fit
-      const padding = 60;
-      const fitZoom = Math.min((cw - padding) / width, (ch - padding) / height, 0.9);
-      const vpw = width * fitZoom;
-      const vph = height * fitZoom;
-      canvas.viewportTransform = [fitZoom, 0, 0, fitZoom, (cw - vpw) / 2, (ch - vph) / 2];
+      // Center artboard and keep recentering while layout settles.
+      scheduleCenteringBurst(canvas, width, height);
 
-      // Resize canvas when container resizes and re-center artboard
-      const ro = new ResizeObserver((entries) => {
-        const entry = entries[0];
-        if (entry && fabricRef.current) {
-          const { width: rw, height: rh } = entry.contentRect;
-          if (rw > 0 && rh > 0) {
-            fabricRef.current.setDimensions({ width: rw, height: rh });
-            // Re-center the artboard on resize
-            const dw = designWidthRef.current;
-            const dh = designHeightRef.current;
-            const padding = 60;
-            const z = Math.min((rw - padding) / dw, (rh - padding) / dh, 0.9);
-            fabricRef.current.viewportTransform = [
-              z, 0, 0, z,
-              (rw - dw * z) / 2,
-              (rh - dh * z) / 2,
-            ];
-            fabricRef.current.requestRenderAll();
-          }
-        }
-      });
-      if (wrapperRef.current) ro.observe(wrapperRef.current);
-      resizeObserverRef.current = ro;
-
-      // Customize controls appearance
+      // Customize control appearance (Canva-style)
       try {
         fabric.FabricObject.prototype.set({
           transparentCorners: false,
-          borderColor: "#6366f1",
-          cornerColor: "#6366f1",
+          borderColor: "#7c3aed",
+          cornerColor: "#7c3aed",
           cornerStrokeColor: "#ffffff",
           cornerStyle: "circle",
           cornerSize: 10,
-          borderScaleFactor: 2,
+          borderScaleFactor: 1.5,
           padding: 4,
         } as any);
       } catch {
         // Some versions may not support all properties
       }
 
-      // ── Pan support (Alt + drag or middle-click drag) ──
+      // ResizeObserver to recenter when container changes
+      // (e.g. when left toolbar panel expands/collapses)
+      let resizeRAF: number | null = null;
+      const ro = new ResizeObserver(() => {
+        if (!fabricRef.current) return;
+        if (resizeRAF) cancelAnimationFrame(resizeRAF);
+        resizeRAF = requestAnimationFrame(() => {
+          if (!fabricRef.current) return;
+          // Re-center by recalculating the fit zoom
+          centerArtboard(fabricRef.current, designWidthRef.current, designHeightRef.current);
+        });
+      });
+      if (wrapperRef.current) ro.observe(wrapperRef.current);
+      resizeObserverRef.current = ro;
+
+      // ── Pan support (Space + drag, middle-click drag, or Alt + drag) ──
       let isPanning = false;
       let panLastX = 0;
       let panLastY = 0;
+      let spaceHeld = false;
+
+      const handleKeyDownForPan = (e: KeyboardEvent) => {
+        if (e.code === "Space" && !spaceHeld) {
+          spaceHeld = true;
+          const el = (canvas as any).upperCanvasEl;
+          if (el) el.style.cursor = "grab";
+        }
+      };
+      const handleKeyUpForPan = (e: KeyboardEvent) => {
+        if (e.code === "Space") {
+          spaceHeld = false;
+          if (!isPanning) {
+            const el = (canvas as any).upperCanvasEl;
+            if (el) el.style.cursor = "";
+          }
+        }
+      };
+      window.addEventListener("keydown", handleKeyDownForPan);
+      window.addEventListener("keyup", handleKeyUpForPan);
 
       canvas.on("mouse:down", (opt) => {
         const ev = opt.e as any;
-        if (ev.altKey || ev.button === 1) {
+        if (spaceHeld || ev.altKey || ev.button === 1) {
           isPanning = true;
           panLastX = ev.clientX || 0;
           panLastY = ev.clientY || 0;
@@ -225,12 +314,16 @@ export default function DesignCanvas({
       canvas.on("mouse:move", (opt) => {
         if (!isPanning) return;
         const ev = opt.e as any;
+        const dx = (ev.clientX || 0) - panLastX;
+        const dy = (ev.clientY || 0) - panLastY;
+        panLastX = ev.clientX || 0;
+        panLastY = ev.clientY || 0;
+
+        // Pan by adjusting Fabric viewport transform
         const vpt = canvas.viewportTransform;
         if (vpt) {
-          vpt[4] += (ev.clientX || 0) - panLastX;
-          vpt[5] += (ev.clientY || 0) - panLastY;
-          panLastX = ev.clientX || 0;
-          panLastY = ev.clientY || 0;
+          vpt[4] += dx;
+          vpt[5] += dy;
           canvas.requestRenderAll();
         }
       });
@@ -239,19 +332,22 @@ export default function DesignCanvas({
           isPanning = false;
           canvas.selection = true;
           const el = (canvas as any).upperCanvasEl;
-          if (el) el.style.cursor = "";
+          if (el) el.style.cursor = spaceHeld ? "grab" : "";
         }
       });
 
-      canvas.on("selection:created", (e) => {
-        onSelectionChange?.(e.selected?.[0] || null);
+      // Selection events - pass the actual active object (ActiveSelection for multi-select)
+      canvas.on("selection:created", () => {
+        onSelectionChange?.(canvas.getActiveObject() || null);
       });
-      canvas.on("selection:updated", (e) => {
-        onSelectionChange?.(e.selected?.[0] || null);
+      canvas.on("selection:updated", () => {
+        onSelectionChange?.(canvas.getActiveObject() || null);
       });
       canvas.on("selection:cleared", () => {
         onSelectionChange?.(null);
       });
+
+      // History tracking
       canvas.on("object:modified", () => {
         saveToHistory();
         onCanvasModified?.();
@@ -269,21 +365,20 @@ export default function DesignCanvas({
         }
       });
 
-      canvas.on("mouse:wheel", async (opt) => {
-        // Only zoom when Ctrl (or Cmd) is held; otherwise let the page scroll
+      // Ctrl+Scroll zoom (like Canva) - zoom towards cursor position
+      canvas.on("mouse:wheel", (opt) => {
         if (!opt.e.ctrlKey && !opt.e.metaKey) return;
-
         opt.e.preventDefault();
         opt.e.stopPropagation();
         const delta = opt.e.deltaY;
         let zoom = canvas.getZoom();
         zoom *= 0.999 ** delta;
-        if (zoom > 5) zoom = 5;
-        if (zoom < 0.05) zoom = 0.05;
-        const fb = await import("fabric");
-        const point = new fb.Point(opt.e.offsetX, opt.e.offsetY);
+        if (zoom > 10) zoom = 10;
+        if (zoom < 0.02) zoom = 0.02;
+        const point = new fabricLib.Point(opt.e.offsetX, opt.e.offsetY);
         canvas.zoomToPoint(point, zoom);
-        onZoomChange?.(zoom);
+        cssZoomRef.current = zoom;
+        onZoomChangeRef.current?.(zoom);
       });
 
       saveToHistory();
@@ -313,7 +408,6 @@ export default function DesignCanvas({
         ];
       }
 
-      // After-render overlay: draw connection points & temp connector
       canvas.on("after:render", () => {
         if (!fcMode) return;
         const ctx = (canvas as any).contextContainer as CanvasRenderingContext2D | null;
@@ -323,7 +417,6 @@ export default function DesignCanvas({
         ctx.save();
         ctx.transform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
 
-        // Draw connection points on hovered shape
         if (fcHoveredShape && !fcCreating) {
           const ports = fcGetPorts(fcHoveredShape);
           for (const pt of ports) {
@@ -336,7 +429,6 @@ export default function DesignCanvas({
             ctx.strokeStyle = "#ffffff";
             ctx.lineWidth = 2;
             ctx.stroke();
-            // Plus icon
             ctx.beginPath();
             ctx.moveTo(pt.x - 3, pt.y);
             ctx.lineTo(pt.x + 3, pt.y);
@@ -348,13 +440,11 @@ export default function DesignCanvas({
           }
         }
 
-        // Draw temporary connector line during drag
         if (fcCreating && fcStart && fcEnd) {
           const dx = fcEnd.x - fcStart.x;
           const dy = fcEnd.y - fcStart.y;
           const dist = Math.hypot(dx, dy);
           if (dist > 5) {
-            // Dashed line
             ctx.beginPath();
             ctx.moveTo(fcStart.x, fcStart.y);
             ctx.lineTo(fcEnd.x, fcEnd.y);
@@ -364,7 +454,6 @@ export default function DesignCanvas({
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Arrowhead
             const ang = Math.atan2(dy, dx);
             const hl = 14;
             ctx.beginPath();
@@ -376,13 +465,12 @@ export default function DesignCanvas({
             ctx.fill();
           }
 
-          // Highlight snap targets (green dots on nearby shape ports)
           const objs = canvas.getObjects();
           for (const obj of objs) {
             if (obj === fcHoveredShape || (obj as any)._isConnector) continue;
             const ports = fcGetPorts(obj);
             for (const pt of ports) {
-              if (Math.hypot(pt.x - fcEnd.x, pt.y - fcEnd.y) < 25) {
+              if (Math.hypot(pt.x - fcEnd!.x, pt.y - fcEnd!.y) < 25) {
                 ctx.beginPath();
                 ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
                 ctx.fillStyle = "rgba(34, 197, 94, 0.85)";
@@ -398,8 +486,6 @@ export default function DesignCanvas({
         ctx.restore();
       });
 
-      // Helper: get pointer in scene/canvas coordinates (Fabric v7 compatible)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       function fcGetPointer(e: any): { x: number; y: number } {
         const c = canvas as any;
         if (c.getScenePoint) {
@@ -411,45 +497,34 @@ export default function DesignCanvas({
           return { x: p.x, y: p.y };
         }
         const vpt = canvas.viewportTransform || [1, 0, 0, 1, 0, 0];
-        const offsetX = e.offsetX ?? e.clientX ?? 0;
-        const offsetY = e.offsetY ?? e.clientY ?? 0;
         return {
-          x: (offsetX - vpt[4]) / vpt[0],
-          y: (offsetY - vpt[5]) / vpt[3],
+          x: ((e.offsetX ?? e.clientX ?? 0) - vpt[4]) / vpt[0],
+          y: ((e.offsetY ?? e.clientY ?? 0) - vpt[5]) / vpt[3],
         };
       }
 
-      // Helper: find target object under mouse (Fabric v7 compatible)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       function fcFindTarget(e: any): FabricObject | null {
         const result = canvas.findTarget(e) as any;
         if (!result) return null;
-        // In Fabric v7, findTarget may return {target, targets} wrapper
         if (result.target !== undefined) return result.target as FabricObject;
         return result as FabricObject;
       }
 
-      // Mouse move: detect hovered shape & nearest port
       canvas.on("mouse:move", (opt) => {
         if (!fcMode) return;
         const pointer = fcGetPointer(opt.e);
-
         if (fcCreating) {
           fcEnd = { x: pointer.x, y: pointer.y };
           canvas.requestRenderAll();
           return;
         }
-
-        // Restore previous hovered shape selectability
-        if (fcHoveredShape) {
-          (fcHoveredShape as any).selectable = true;
-        }
+        if (fcHoveredShape) (fcHoveredShape as any).selectable = true;
         canvas.selection = true;
 
         const target = fcFindTarget(opt.e);
         const tAny = target as any;
         if (target && tAny.type !== "activeSelection" && !tAny._isConnector && !tAny._isArtboard && !tAny._isBgImage
-            && !(tAny.group && tAny.group._isConnector)) {
+          && !(tAny.group && tAny.group._isConnector)) {
           fcHoveredShape = target;
           const ports = fcGetPorts(target);
           let closest: typeof ports[0] | null = null;
@@ -459,11 +534,8 @@ export default function DesignCanvas({
             if (d < closestDist) { closest = pt; closestDist = d; }
           }
           fcNearPort = closest;
-
           const el = (canvas as any).upperCanvasEl;
           if (el) el.style.cursor = fcNearPort ? "crosshair" : "";
-
-          // Prevent shape selection when near a port
           if (fcNearPort) {
             (target as any).selectable = false;
             canvas.selection = false;
@@ -474,18 +546,14 @@ export default function DesignCanvas({
           const el = (canvas as any).upperCanvasEl;
           if (el) el.style.cursor = "";
         }
-
         canvas.requestRenderAll();
       });
 
-      // Mouse down: start creating connector from port
       canvas.on("mouse:down", (opt) => {
         if (!fcMode || !fcNearPort || !fcHoveredShape) return;
-
         fcCreating = true;
         fcStart = { x: fcNearPort.x, y: fcNearPort.y };
         fcEnd = { x: fcNearPort.x, y: fcNearPort.y };
-
         canvas.discardActiveObject();
         canvas.forEachObject((obj: any) => {
           obj._fcPrev = obj.selectable;
@@ -495,11 +563,8 @@ export default function DesignCanvas({
         canvas.requestRenderAll();
       });
 
-      // Mouse up: finalize connector arrow
       canvas.on("mouse:up", async () => {
         if (!fcCreating) return;
-
-        // Restore selectability
         canvas.forEachObject((obj: any) => {
           obj.selectable = obj._fcPrev !== undefined ? obj._fcPrev : true;
           delete obj._fcPrev;
@@ -520,7 +585,6 @@ export default function DesignCanvas({
           return;
         }
 
-        // Snap endpoint to nearest shape port if close
         let finalEnd = { ...fcEnd };
         const objs = canvas.getObjects();
         for (const obj of objs) {
@@ -534,8 +598,7 @@ export default function DesignCanvas({
           }
         }
 
-        // Create permanent connector (line + arrowhead group)
-        const fb = await import("fabric");
+        const fb = fabricLib;
         const dx = finalEnd.x - fcStart.x;
         const dy = finalEnd.y - fcStart.y;
         const ang = Math.atan2(dy, dx);
@@ -560,19 +623,20 @@ export default function DesignCanvas({
 
         fcStart = null;
         fcEnd = null;
-
         canvas.requestRenderAll();
         saveToHistory();
         onCanvasModified?.();
       });
 
+      // ═══════════════════════════════════════════════
+      // ── Canvas API ──
+      // ═══════════════════════════════════════════════
       const api: DesignCanvasAPI = {
         getCanvas: () => fabricRef.current,
 
         toJSON: () => {
           if (!fabricRef.current) return "{}";
-          const json = fabricRef.current.toJSON() as any;
-          // Save with design dimensions and artboard color as background
+          const json = fabricRef.current.toJSON(["_isArtboard", "excludeFromExport"]) as any;
           json.width = designWidthRef.current;
           json.height = designHeightRef.current;
           const ab = artboardRef.current as any;
@@ -588,30 +652,31 @@ export default function DesignCanvas({
             const bgColor = parsed.background || parsed.backgroundColor || "#ffffff";
             await fabricRef.current.loadFromJSON(parsed);
 
-            // Restore canvas to container dimensions (not design dimensions)
-            const containerEl = wrapperRef.current;
-            if (containerEl) {
-              fabricRef.current.setDimensions({
-                width: containerEl.clientWidth,
-                height: containerEl.clientHeight,
-              });
-            }
             fabricRef.current.backgroundColor = "transparent";
 
-            // Re-create artboard
-            const fb = await import("fabric");
+            // Ensure canvas fills workspace after JSON load (JSON may reset dimensions)
+            const ww = wrapperRef.current?.clientWidth || 0;
+            const wh = wrapperRef.current?.clientHeight || 0;
+            if (ww > 10 && wh > 10) {
+              fabricRef.current.setDimensions({ width: ww, height: wh });
+            }
+
             const dw = designWidthRef.current;
             const dh = designHeightRef.current;
+
+            const fb = fabricLib;
             const ab = new fb.Rect({
               left: 0, top: 0, width: dw, height: dh,
               fill: bgColor,
+              stroke: "#d1d5db",
+              strokeWidth: 1,
               selectable: false, evented: false,
               excludeFromExport: true,
               hoverCursor: "default",
             } as any);
             try {
               (ab as any).shadow = new fb.Shadow({
-                color: "rgba(0,0,0,0.12)", blur: 15, offsetX: 0, offsetY: 4,
+                color: "rgba(0,0,0,0.15)", blur: 20, offsetX: 0, offsetY: 4,
               });
             } catch { /* shadow optional */ }
             (ab as any)._isArtboard = true;
@@ -619,9 +684,8 @@ export default function DesignCanvas({
             fabricRef.current.sendObjectToBack(ab);
             artboardRef.current = ab;
 
-            // Center view
-            api.zoomToFit();
-            fabricRef.current.renderAll();
+            // Center the design after loading
+            scheduleCenteringBurst(fabricRef.current, dw, dh);
             saveToHistory();
           } catch (err) {
             console.error("Error loading canvas JSON:", err);
@@ -633,25 +697,27 @@ export default function DesignCanvas({
         toDataURL: async (format = "png", quality = 1) => {
           if (!fabricRef.current) return "";
           try {
-            const fb = await import("fabric");
+            const fb = fabricLib;
             const dw = designWidthRef.current;
             const dh = designHeightRef.current;
-            // Get artboard color
             const ab = artboardRef.current as any;
             const bgColor = ab?.fill || "#ffffff";
 
-            // Get the JSON (excludes artboard due to excludeFromExport)
-            const jsonData = fabricRef.current.toJSON() as any;
-            // Ensure design dimensions and background
+            const jsonData = fabricRef.current.toJSON(["_isArtboard", "excludeFromExport"]) as any;
+            const objects = Array.isArray(jsonData.objects) ? jsonData.objects : [];
+            jsonData.objects = objects.filter((obj: any) => {
+              if (!obj) return false;
+              if (obj._isArtboard) return false;
+              if (obj.excludeFromExport === true) return false;
+              return true;
+            });
             jsonData.width = dw;
             jsonData.height = dh;
             jsonData.background = bgColor;
 
             const tempEl = document.createElement("canvas");
-            const tempCanvas = new fb.StaticCanvas(tempEl, {
-              width: dw,
-              height: dh,
-            });
+            const tempCanvas = new fb.StaticCanvas(tempEl, { width: dw, height: dh });
+            tempCanvas.backgroundColor = bgColor;
             await tempCanvas.loadFromJSON(jsonData);
             tempCanvas.viewportTransform = [1, 0, 0, 1, 0, 0];
             tempCanvas.renderAll();
@@ -668,10 +734,12 @@ export default function DesignCanvas({
 
         addText: async (text = "Edit this text", options = {}) => {
           if (!fabricRef.current) return;
-          const fb = await import("fabric");
+          const fb = fabricLib;
+          const dw = designWidthRef.current;
+          const dh = designHeightRef.current;
           const textObj = new fb.IText(text, {
-            left: width / 2 - 100,
-            top: height / 2 - 20,
+            left: dw / 2 - 100,
+            top: dh / 2 - 20,
             fontSize: 36,
             fontFamily: "Arial",
             fill: "#333333",
@@ -687,9 +755,11 @@ export default function DesignCanvas({
 
         addShape: async (type: string) => {
           if (!fabricRef.current) return;
-          const fb = await import("fabric");
-          const centerX = width / 2;
-          const centerY = height / 2;
+          const fb = fabricLib;
+          const dw = designWidthRef.current;
+          const dh = designHeightRef.current;
+          const centerX = dw / 2;
+          const centerY = dh / 2;
           let shape: FabricObject | null = null;
 
           switch (type) {
@@ -751,7 +821,7 @@ export default function DesignCanvas({
               break;
             }
 
-            // ── Flowchart Shapes ──
+            // Flowchart Shapes
             case "process":
               shape = new fb.Rect({
                 left: centerX - 80, top: centerY - 40,
@@ -760,7 +830,6 @@ export default function DesignCanvas({
                 stroke: "#2563EB", strokeWidth: 2,
               });
               break;
-
             case "decision": {
               const dPts = [
                 { x: centerX, y: centerY - 60 },
@@ -773,7 +842,6 @@ export default function DesignCanvas({
               });
               break;
             }
-
             case "terminator":
               shape = new fb.Rect({
                 left: centerX - 80, top: centerY - 30,
@@ -782,7 +850,6 @@ export default function DesignCanvas({
                 stroke: "#059669", strokeWidth: 2,
               });
               break;
-
             case "data-io": {
               const ioPts = [
                 { x: centerX - 60, y: centerY - 40 },
@@ -795,19 +862,16 @@ export default function DesignCanvas({
               });
               break;
             }
-
             case "database": {
               shape = new fb.Path(
                 "M 0 25 C 0 11 27 0 60 0 C 93 0 120 11 120 25 L 120 115 C 120 129 93 140 60 140 C 27 140 0 129 0 115 Z M 0 25 C 0 39 27 50 60 50 C 93 50 120 39 120 25",
                 {
                   left: centerX - 60, top: centerY - 70,
                   fill: "#8B5CF6", stroke: "#7C3AED", strokeWidth: 2,
-                  scaleX: 1, scaleY: 1,
                 }
               );
               break;
             }
-
             case "document": {
               shape = new fb.Path(
                 "M 0 0 L 180 0 L 180 100 Q 135 130 90 100 Q 45 70 0 100 Z",
@@ -818,7 +882,6 @@ export default function DesignCanvas({
               );
               break;
             }
-
             case "cloud-shape": {
               shape = new fb.Path(
                 "M 50 110 C 20 110 0 90 0 70 C 0 50 15 35 35 30 C 30 10 50 0 70 0 C 90 0 105 10 110 30 C 115 25 125 25 135 30 C 160 30 175 50 175 70 C 175 90 160 110 135 110 Z",
@@ -829,9 +892,7 @@ export default function DesignCanvas({
               );
               break;
             }
-
             case "subroutine": {
-              // Double-bordered rectangle using a group
               const outerRect = new fb.Rect({
                 left: 0, top: 0, width: 160, height: 80,
                 fill: "#A855F7", stroke: "#9333EA", strokeWidth: 2,
@@ -849,7 +910,6 @@ export default function DesignCanvas({
               shape = subGroup as unknown as FabricObject;
               break;
             }
-
             case "predefined-process": {
               shape = new fb.Rect({
                 left: centerX - 80, top: centerY - 40,
@@ -860,7 +920,7 @@ export default function DesignCanvas({
               break;
             }
 
-            // ── Connectors ──
+            // Connectors
             case "connector-arrow": {
               const line = new fb.Line(
                 [centerX - 100, centerY, centerX + 80, centerY],
@@ -876,7 +936,6 @@ export default function DesignCanvas({
               shape = cg1 as unknown as FabricObject;
               break;
             }
-
             case "connector-double": {
               const dLine = new fb.Line(
                 [centerX - 80, centerY, centerX + 80, centerY],
@@ -897,7 +956,6 @@ export default function DesignCanvas({
               shape = cg2 as unknown as FabricObject;
               break;
             }
-
             case "connector-dashed": {
               const dashLine = new fb.Line(
                 [centerX - 100, centerY, centerX + 80, centerY],
@@ -913,7 +971,6 @@ export default function DesignCanvas({
               shape = cg3 as unknown as FabricObject;
               break;
             }
-
             case "connector-curved": {
               const curvePath = new fb.Path(
                 `M ${centerX - 100} ${centerY} Q ${centerX} ${centerY - 80} ${centerX + 80} ${centerY}`,
@@ -929,7 +986,6 @@ export default function DesignCanvas({
               shape = cg4 as unknown as FabricObject;
               break;
             }
-
             case "connector-elbow": {
               const elbowPath = new fb.Polyline([
                 { x: centerX - 100, y: centerY },
@@ -958,15 +1014,17 @@ export default function DesignCanvas({
 
         addImage: async (url: string) => {
           if (!fabricRef.current) return;
-          const fb = await import("fabric");
+          const fb = fabricLib;
           try {
+            const dw = designWidthRef.current;
+            const dh = designHeightRef.current;
             const img = await fb.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
-            const maxW = width * 0.6;
-            const maxH = height * 0.6;
+            const maxW = dw * 0.6;
+            const maxH = dh * 0.6;
             const scale = Math.min(maxW / (img.width || 1), maxH / (img.height || 1), 1);
             img.set({
-              left: width / 2 - ((img.width || 0) * scale) / 2,
-              top: height / 2 - ((img.height || 0) * scale) / 2,
+              left: dw / 2 - ((img.width || 0) * scale) / 2,
+              top: dh / 2 - ((img.height || 0) * scale) / 2,
               scaleX: scale, scaleY: scale,
             });
             fabricRef.current.add(img);
@@ -979,8 +1037,10 @@ export default function DesignCanvas({
 
         addSVGIcon: async (svgString: string, options?: { size?: number; fill?: string }) => {
           if (!fabricRef.current) return;
-          const fb = await import("fabric");
+          const fb = fabricLib;
           try {
+            const dw = designWidthRef.current;
+            const dh = designHeightRef.current;
             const result = await fb.loadSVGFromString(svgString);
             if (!result.objects || result.objects.length === 0) return;
             const validObjects = result.objects.filter(Boolean) as FabricObject[];
@@ -995,8 +1055,8 @@ export default function DesignCanvas({
             const objH = obj.height || 24;
             const scale = Math.min(size / objW, size / objH);
             obj.set({
-              left: width / 2 - (objW * scale) / 2,
-              top: height / 2 - (objH * scale) / 2,
+              left: dw / 2 - (objW * scale) / 2,
+              top: dh / 2 - (objH * scale) / 2,
               scaleX: scale, scaleY: scale,
             });
             if (options?.fill) {
@@ -1024,7 +1084,6 @@ export default function DesignCanvas({
 
         setBackgroundColor: (color: string) => {
           if (!fabricRef.current) return;
-          // Change the artboard fill (not canvas background)
           if (artboardRef.current) {
             (artboardRef.current as any).set("fill", color);
           }
@@ -1035,7 +1094,7 @@ export default function DesignCanvas({
 
         setBackgroundImage: async (url: string) => {
           if (!fabricRef.current) return;
-          const fb = await import("fabric");
+          const fb = fabricLib;
           try {
             const img = await fb.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
             const dw = designWidthRef.current;
@@ -1044,20 +1103,16 @@ export default function DesignCanvas({
               left: 0, top: 0,
               scaleX: dw / (img.width || 1),
               scaleY: dh / (img.height || 1),
-              selectable: false,
-              evented: false,
+              selectable: false, evented: false,
             });
             (img as any)._isBgImage = true;
 
-            // Remove existing bg image if any
             const existing = fabricRef.current.getObjects().find((o: any) => (o as any)._isBgImage);
             if (existing) fabricRef.current.remove(existing);
 
             fabricRef.current.add(img);
-            // Position right above the artboard
             const artboardIdx = fabricRef.current.getObjects().indexOf(artboardRef.current!);
             if (artboardIdx >= 0) {
-              // Move bg image to just above artboard
               const objects = fabricRef.current.getObjects();
               const imgIdx = objects.indexOf(img);
               if (imgIdx !== artboardIdx + 1) {
@@ -1087,7 +1142,7 @@ export default function DesignCanvas({
 
         selectAll: async () => {
           if (!fabricRef.current) return;
-          const fb = await import("fabric");
+          const fb = fabricLib;
           const objects = fabricRef.current.getObjects().filter(
             (o: any) => !(o as any)._isArtboard && !(o as any)._isBgImage && o.selectable !== false
           );
@@ -1100,17 +1155,10 @@ export default function DesignCanvas({
 
         clearCanvas: async () => {
           if (!fabricRef.current) return;
-          // Remove all objects except artboard (including bg image)
-          const objs = fabricRef.current.getObjects().filter(
-            (o: any) => !(o as any)._isArtboard
-          );
+          const objs = fabricRef.current.getObjects().filter((o: any) => !(o as any)._isArtboard);
           objs.forEach((o) => fabricRef.current!.remove(o));
-          // Also clear canvas backgroundImage
           fabricRef.current.backgroundImage = undefined as any;
-          // Reset artboard color
-          if (artboardRef.current) {
-            (artboardRef.current as any).set("fill", "#ffffff");
-          }
+          if (artboardRef.current) (artboardRef.current as any).set("fill", "#ffffff");
           fabricRef.current.discardActiveObject();
           fabricRef.current.backgroundColor = "transparent";
           fabricRef.current.renderAll();
@@ -1139,52 +1187,26 @@ export default function DesignCanvas({
           if (active) { fabricRef.current.sendObjectToBack(active); fabricRef.current.renderAll(); saveToHistory(); onCanvasModified?.(); }
         },
 
+        // ── FIXED GROUPING ──
         group: async () => {
           const canvas = fabricRef.current;
           if (!canvas) return;
           const active = canvas.getActiveObject();
           if (!active || active.type !== "activeSelection") return;
           try {
-            const fb = await import("fabric");
+            const fb = fabricLib;
             const selection = active as any;
             const objects = selection.getObjects().slice();
             if (objects.length < 2) return;
 
-            // Capture each object's absolute position before ungrouping
-            const absPositions = objects.map((obj: any) => {
-              const m = obj.calcTransformMatrix();
-              const decomposed = fb.util.qrDecompose(m);
-              return {
-                left: decomposed.translateX,
-                top: decomposed.translateY,
-                scaleX: decomposed.scaleX,
-                scaleY: decomposed.scaleY,
-                angle: decomposed.angle,
-                skewX: decomposed.skewX,
-                skewY: decomposed.skewY,
-              };
-            });
-
-            canvas.discardActiveObject();
-
-            // Remove objects from canvas
-            for (const obj of objects) {
-              canvas.remove(obj);
+            // Use Fabric.js built-in toGroup for correct grouping
+            const group = (selection as any).toGroup();
+            if (group) {
+              canvas.setActiveObject(group);
+              canvas.requestRenderAll();
+              saveToHistory();
+              onCanvasModified?.();
             }
-
-            // Reset objects to their absolute transforms so the Group ctor calculates correctly
-            objects.forEach((obj: any, i: number) => {
-              obj.set(absPositions[i]);
-              obj.setCoords();
-            });
-
-            // Create new group
-            const group = new fb.Group(objects);
-            canvas.add(group);
-            canvas.setActiveObject(group);
-            canvas.requestRenderAll();
-            saveToHistory();
-            onCanvasModified?.();
           } catch (err) {
             console.error("Error grouping:", err);
           }
@@ -1196,57 +1218,14 @@ export default function DesignCanvas({
           const active = canvas.getActiveObject();
           if (!active || active.type !== "group") return;
           try {
-            const fb = await import("fabric");
-            const group = active as any;
-            const items = group.getObjects().slice();
-
-            // Get group's transform matrix
-            const groupMatrix = group.calcTransformMatrix();
-
-            // Calculate each item's absolute position
-            const absPositions = items.map((item: any) => {
-              const itemRelMatrix = item.calcTransformMatrix();
-              const fullMatrix = fb.util.multiplyTransformMatrices(
-                groupMatrix,
-                itemRelMatrix
-              );
-              return fb.util.qrDecompose(fullMatrix);
-            });
-
-            // Remove the group from canvas
-            canvas.remove(group);
-
-            // Add items back with correct absolute positions
-            const addedItems: FabricObject[] = [];
-            items.forEach((item: any, i: number) => {
-              const pos = absPositions[i];
-              // Clear group reference
-              item.group = undefined;
-              item.set({
-                left: pos.translateX,
-                top: pos.translateY,
-                scaleX: pos.scaleX,
-                scaleY: pos.scaleY,
-                angle: pos.angle,
-                skewX: pos.skewX,
-                skewY: pos.skewY,
-              });
-              item.setCoords();
-              canvas.add(item);
-              addedItems.push(item);
-            });
-
-            // Select all ungrouped items
-            if (addedItems.length > 1) {
-              const sel = new fb.ActiveSelection(addedItems, { canvas });
-              canvas.setActiveObject(sel);
-            } else if (addedItems.length === 1) {
-              canvas.setActiveObject(addedItems[0]);
+            const fb = fabricLib;
+            // Use Fabric.js built-in toActiveSelection for correct ungrouping
+            const activeSelection = (active as any).toActiveSelection();
+            if (activeSelection) {
+              canvas.requestRenderAll();
+              saveToHistory();
+              onCanvasModified?.();
             }
-
-            canvas.requestRenderAll();
-            saveToHistory();
-            onCanvasModified?.();
           } catch (err) {
             console.error("Error ungrouping:", err);
           }
@@ -1286,7 +1265,6 @@ export default function DesignCanvas({
           } else {
             fabricRef.current.add(cloned);
           }
-          // Update clipboard position for consecutive pastes
           clipboardRef.current!.set({
             left: (clipboardRef.current!.left || 0) + 20,
             top: (clipboardRef.current!.top || 0) + 20,
@@ -1295,7 +1273,7 @@ export default function DesignCanvas({
           fabricRef.current.renderAll();
         },
 
-        // ── Alignment (relative to artboard / design area) ──
+        // ── Alignment ──
         alignToCanvas: (type) => {
           if (!fabricRef.current) return;
           const active = fabricRef.current.getActiveObject();
@@ -1303,14 +1281,17 @@ export default function DesignCanvas({
           const dw = designWidthRef.current;
           const dh = designHeightRef.current;
           const bound = active.getBoundingRect();
-          const objW = bound.width / (fabricRef.current.getZoom() || 1);
-          const objH = bound.height / (fabricRef.current.getZoom() || 1);
+          const zoom = fabricRef.current.getZoom() || 1;
+          const vpt = fabricRef.current.viewportTransform || [1, 0, 0, 1, 0, 0];
+          const objW = bound.width / zoom;
+          const objH = bound.height / zoom;
           const currentLeft = active.left || 0;
           const currentTop = active.top || 0;
-          const boundLeft = bound.left / (fabricRef.current.getZoom() || 1) - (fabricRef.current.viewportTransform?.[4] || 0) / (fabricRef.current.getZoom() || 1);
-          const boundTop = bound.top / (fabricRef.current.getZoom() || 1) - (fabricRef.current.viewportTransform?.[5] || 0) / (fabricRef.current.getZoom() || 1);
+          const boundLeft = (bound.left - vpt[4]) / zoom;
+          const boundTop = (bound.top - vpt[5]) / zoom;
           const offsetX = currentLeft - boundLeft;
           const offsetY = currentTop - boundTop;
+
           switch (type) {
             case "left": active.set("left", 0 + offsetX); break;
             case "center-h": active.set("left", dw / 2 - objW / 2 + offsetX); break;
@@ -1332,8 +1313,11 @@ export default function DesignCanvas({
           isLoadingRef.current = true;
           const state = historyRef.current[historyIndexRef.current];
           fabricRef.current.loadFromJSON(JSON.parse(state)).then(() => {
-            fabricRef.current!.renderAll();
             isLoadingRef.current = false;
+            // Recenter after restoring state (loadFromJSON resets VPT)
+            if (fabricRef.current) {
+              centerArtboard(fabricRef.current, designWidthRef.current, designHeightRef.current);
+            }
             onCanvasModified?.();
           });
         },
@@ -1343,8 +1327,11 @@ export default function DesignCanvas({
           isLoadingRef.current = true;
           const state = historyRef.current[historyIndexRef.current];
           fabricRef.current.loadFromJSON(JSON.parse(state)).then(() => {
-            fabricRef.current!.renderAll();
             isLoadingRef.current = false;
+            // Recenter after restoring state (loadFromJSON resets VPT)
+            if (fabricRef.current) {
+              centerArtboard(fabricRef.current, designWidthRef.current, designHeightRef.current);
+            }
             onCanvasModified?.();
           });
         },
@@ -1352,63 +1339,43 @@ export default function DesignCanvas({
         // ── Zoom ──
         zoomIn: () => {
           if (!fabricRef.current) return;
-          const canvasW = fabricRef.current.width || 1200;
-          const canvasH = fabricRef.current.height || 800;
-          let zoom = fabricRef.current.getZoom() * 1.1;
-          if (zoom > 5) zoom = 5;
-          const dw = designWidthRef.current;
-          const dh = designHeightRef.current;
-          fabricRef.current.viewportTransform = [
-            zoom, 0, 0, zoom,
-            (canvasW - dw * zoom) / 2,
-            (canvasH - dh * zoom) / 2,
-          ];
-          fabricRef.current.requestRenderAll();
-          onZoomChange?.(zoom);
+          let zoom = fabricRef.current.getZoom() * 1.15;
+          if (zoom > 10) zoom = 10;
+          const ww = wrapperRef.current?.clientWidth || 0;
+          const wh = wrapperRef.current?.clientHeight || 0;
+          const center = new fabricLib.Point(ww / 2, wh / 2);
+          fabricRef.current.zoomToPoint(center, zoom);
+          cssZoomRef.current = zoom;
+          onZoomChangeRef.current?.(zoom);
         },
         zoomOut: () => {
           if (!fabricRef.current) return;
-          const canvasW = fabricRef.current.width || 1200;
-          const canvasH = fabricRef.current.height || 800;
-          let zoom = fabricRef.current.getZoom() * 0.9;
-          if (zoom < 0.05) zoom = 0.05;
-          const dw = designWidthRef.current;
-          const dh = designHeightRef.current;
-          fabricRef.current.viewportTransform = [
-            zoom, 0, 0, zoom,
-            (canvasW - dw * zoom) / 2,
-            (canvasH - dh * zoom) / 2,
-          ];
-          fabricRef.current.requestRenderAll();
-          onZoomChange?.(zoom);
+          let zoom = fabricRef.current.getZoom() * 0.85;
+          if (zoom < 0.02) zoom = 0.02;
+          const ww = wrapperRef.current?.clientWidth || 0;
+          const wh = wrapperRef.current?.clientHeight || 0;
+          const center = new fabricLib.Point(ww / 2, wh / 2);
+          fabricRef.current.zoomToPoint(center, zoom);
+          cssZoomRef.current = zoom;
+          onZoomChangeRef.current?.(zoom);
         },
         resetZoom: () => {
           if (!fabricRef.current) return;
-          const canvasW = fabricRef.current.width || 1200;
-          const canvasH = fabricRef.current.height || 800;
+          const ww = wrapperRef.current?.clientWidth || 0;
+          const wh = wrapperRef.current?.clientHeight || 0;
           const dw = designWidthRef.current;
           const dh = designHeightRef.current;
-          fabricRef.current.viewportTransform = [1, 0, 0, 1, (canvasW - dw) / 2, (canvasH - dh) / 2];
-          fabricRef.current.requestRenderAll();
-          onZoomChange?.(1);
+          const tx = (ww - dw) / 2;
+          const ty = (wh - dh) / 2;
+          cssZoomRef.current = 1;
+          fabricRef.current.setViewportTransform([1, 0, 0, 1, tx, ty]);
+          onZoomChangeRef.current?.(1);
         },
         zoomToFit: () => {
           if (!fabricRef.current) return;
-          const canvasW = fabricRef.current.width || 1200;
-          const canvasH = fabricRef.current.height || 800;
-          const dw = designWidthRef.current;
-          const dh = designHeightRef.current;
-          const padding = 60;
-          const zoom = Math.min((canvasW - padding) / dw, (canvasH - padding) / dh, 0.9);
-          fabricRef.current.viewportTransform = [
-            zoom, 0, 0, zoom,
-            (canvasW - dw * zoom) / 2,
-            (canvasH - dh * zoom) / 2,
-          ];
-          fabricRef.current.requestRenderAll();
-          onZoomChange?.(zoom);
+          centerArtboard(fabricRef.current, designWidthRef.current, designHeightRef.current);
         },
-        getZoom: () => fabricRef.current?.getZoom() || 1,
+        getZoom: () => fabricRef.current?.getZoom() || cssZoomRef.current,
 
         duplicate: async () => {
           if (!fabricRef.current) return;
@@ -1439,11 +1406,10 @@ export default function DesignCanvas({
           if (!fabricRef.current) return;
           const active = fabricRef.current.getActiveObject();
           if (!active || active.type !== "image") return;
-          const fb = await import("fabric");
+          const fb = fabricLib;
           const img = active as any;
           if (!img.filters) img.filters = [];
 
-          // Filter type mapping
           const filterMap: Record<string, { Constructor: any; prop: string; defaultVal: number }> = {
             brightness: { Constructor: fb.filters.Brightness, prop: "brightness", defaultVal: 0 },
             contrast: { Constructor: fb.filters.Contrast, prop: "contrast", defaultVal: 0 },
@@ -1462,39 +1428,21 @@ export default function DesignCanvas({
             invert: fb.filters.Invert,
           };
 
-          // Handle boolean filters (grayscale, sepia, invert)
           if (booleanFilters[filterType]) {
-            const idx = img.filters.findIndex(
-              (f: any) => f instanceof booleanFilters[filterType]
-            );
-            if (value > 0 && idx === -1) {
-              img.filters.push(new booleanFilters[filterType]());
-            } else if (value === 0 && idx !== -1) {
-              img.filters.splice(idx, 1);
-            }
-          }
-          // Handle value-based filters
-          else if (filterMap[filterType]) {
+            const idx = img.filters.findIndex((f: any) => f instanceof booleanFilters[filterType]);
+            if (value > 0 && idx === -1) img.filters.push(new booleanFilters[filterType]());
+            else if (value === 0 && idx !== -1) img.filters.splice(idx, 1);
+          } else if (filterMap[filterType]) {
             const { Constructor, prop, defaultVal } = filterMap[filterType];
-            const existingIdx = img.filters.findIndex(
-              (f: any) => f instanceof Constructor
-            );
-
+            const existingIdx = img.filters.findIndex((f: any) => f instanceof Constructor);
             if (value === defaultVal && existingIdx !== -1) {
-              // Remove filter if set to default
               img.filters.splice(existingIdx, 1);
             } else if (value !== defaultVal) {
               const opts: any = {};
-              if (filterType === "gamma") {
-                opts[prop] = [value, value, value];
-              } else {
-                opts[prop] = value;
-              }
-              if (existingIdx !== -1) {
-                img.filters[existingIdx] = new Constructor(opts);
-              } else {
-                img.filters.push(new Constructor(opts));
-              }
+              if (filterType === "gamma") opts[prop] = [value, value, value];
+              else opts[prop] = value;
+              if (existingIdx !== -1) img.filters[existingIdx] = new Constructor(opts);
+              else img.filters.push(new Constructor(opts));
             }
           }
 
@@ -1539,19 +1487,17 @@ export default function DesignCanvas({
           }
         },
 
-        // ── Connector / Arrow Styling ──
+        // ── Connector Styling ──
         updateConnectorStyle: async (options) => {
           if (!fabricRef.current) return;
           const active = fabricRef.current.getActiveObject() as any;
           if (!active || !active._isConnector) return;
-          const fb = await import("fabric");
 
           const color = options.color;
           const sw = options.strokeWidth;
           const ls = options.lineStyle;
           const hs = options.headStyle;
 
-          // Compute dash array from line style
           const dashFromStyle = (style: string | undefined, w: number) => {
             if (!style || style === "solid") return undefined;
             if (style === "dashed") return [w * 4, w * 2];
@@ -1559,7 +1505,6 @@ export default function DesignCanvas({
             return undefined;
           };
 
-          // Store metadata on the group
           if (ls) (active as any)._lineStyle = ls;
           if (hs) (active as any)._headStyle = hs;
           if (options.hasStartHead !== undefined) (active as any)._hasStartHead = options.hasStartHead;
@@ -1568,7 +1513,6 @@ export default function DesignCanvas({
             const children = (active as any).getObjects() as any[];
             for (const child of children) {
               const t = child.type;
-              // Update lines / polylines
               if (t === "line" || t === "polyline" || t === "path") {
                 if (color) child.set("stroke", color);
                 if (sw !== undefined) child.set("strokeWidth", sw);
@@ -1577,25 +1521,15 @@ export default function DesignCanvas({
                 const dash = dashFromStyle(finalLS, finalSW);
                 child.set("strokeDashArray", dash || null);
               }
-              // Update arrowhead polygons
               if (t === "polygon" || t === "triangle") {
                 if (hs === "none") {
                   child.set("visible", false);
-                } else if (hs === "outline") {
+                } else if (hs === "outline" || hs === "open") {
                   child.set("visible", true);
                   child.set("fill", "transparent");
                   child.set("stroke", color || child.stroke || "#475569");
                   child.set("strokeWidth", sw !== undefined ? sw : 2);
-                } else if (hs === "open") {
-                  child.set("visible", true);
-                  child.set("fill", "transparent");
-                  child.set("stroke", color || child.stroke || "#475569");
-                  child.set("strokeWidth", sw !== undefined ? sw : 2);
-                } else if (hs === "diamond" || hs === "circle") {
-                  child.set("visible", true);
-                  child.set("fill", color || child.fill || "#475569");
                 } else {
-                  // filled (default)
                   child.set("visible", true);
                   child.set("fill", color || child.fill || "#475569");
                   child.set("stroke", "");
@@ -1606,7 +1540,6 @@ export default function DesignCanvas({
             }
             active.dirty = true;
           } else {
-            // Single line connector
             if (color) active.set("stroke", color);
             if (sw !== undefined) active.set("strokeWidth", sw);
             const finalSW = sw !== undefined ? sw : (active.strokeWidth || 2);
@@ -1687,6 +1620,7 @@ export default function DesignCanvas({
 
     return () => {
       isMounted = false;
+      clearCenteringTimers();
       resizeObserverRef.current?.disconnect();
       if (fabricRef.current) {
         fabricRef.current.dispose();
@@ -1698,41 +1632,35 @@ export default function DesignCanvas({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update design dimensions and artboard when props change + re-center
+  // Update design dimensions and artboard when props change
   useEffect(() => {
     designWidthRef.current = width;
     designHeightRef.current = height;
     if (artboardRef.current && fabricRef.current) {
       (artboardRef.current as any).set({ width, height });
       artboardRef.current.setCoords();
-
-      // Re-center the artboard with zoom to fit
-      const canvas = fabricRef.current;
-      const canvasW = canvas.width || 1200;
-      const canvasH = canvas.height || 800;
-      const padding = 60;
-      const zoom = Math.min((canvasW - padding) / width, (canvasH - padding) / height, 1);
-      canvas.viewportTransform = [
-        zoom, 0, 0, zoom,
-        (canvasW - width * zoom) / 2,
-        (canvasH - height * zoom) / 2,
-      ];
-      canvas.requestRenderAll();
+      centerArtboard(fabricRef.current, width, height);
+      scheduleCenteringBurst(fabricRef.current, width, height);
     }
-  }, [width, height]);
+  }, [width, height, centerArtboard, scheduleCenteringBurst]);
 
   return (
     <div
       ref={wrapperRef}
-      className="relative overflow-hidden flex-1"
       style={{
-        minHeight: "100%",
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        background: "#f0f0f0",
         backgroundImage:
-          "radial-gradient(circle, hsl(var(--muted-foreground) / 0.15) 1px, transparent 1px)",
+          "radial-gradient(circle, rgba(0, 0, 0, 0.06) 1px, transparent 1px)",
         backgroundSize: "20px 20px",
       }}
     >
-      <div ref={containerRef} className="absolute inset-0" />
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: "100%" }}
+      />
     </div>
   );
 }

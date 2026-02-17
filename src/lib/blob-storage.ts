@@ -146,6 +146,32 @@ export async function deleteImageFromBlob(url: string): Promise<boolean> {
   }
 }
 
+// ============ DESIGN THUMBNAIL UPLOAD ============
+
+export async function uploadDesignThumbnail(
+  designId: string,
+  base64Data: string
+): Promise<string | null> {
+  try {
+    // Strip data URL prefix if present
+    const base64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64, 'base64');
+    const path = `${BLOB_PREFIX}/designs/thumbnails/${designId}.jpg`;
+
+    const blob = await put(path, buffer, {
+      access: 'public',
+      contentType: 'image/jpeg',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading design thumbnail:', error);
+    return null;
+  }
+}
+
 // ============ MIGRATION HELPER ============
 
 /**

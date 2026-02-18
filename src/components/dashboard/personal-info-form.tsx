@@ -203,6 +203,7 @@ export function PersonalInfoForm({ portfolio, onUpdate }: PersonalInfoFormProps)
                     fill
                     className="object-cover"
                     sizes="144px"
+                    unoptimized
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">

@@ -20,7 +20,8 @@ import {
   Certification,
   Project,
   Achievement,
-  Language
+  Language,
+  Resume,
 } from "@/types/portfolio";
 import { generateSlug } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -420,4 +421,19 @@ export async function deleteProject(id: string): Promise<Portfolio> {
   
   revalidatePath("/dashboard");
   return portfolio!;
+}
+
+// Resume actions
+export async function updateResumesAction(resumes: Resume[]): Promise<Portfolio> {
+  const user = await getAuthenticatedUser();
+  
+  const portfolio = await updatePortfolio(user.id, { resumes });
+  if (!portfolio) {
+    throw new Error("Portfolio not found");
+  }
+  
+  revalidatePath("/dashboard");
+  revalidatePath(`/p/${portfolio.slug}`);
+  
+  return portfolio;
 }

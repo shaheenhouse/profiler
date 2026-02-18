@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import type { Portfolio, User, Resume, ResumeData } from "@/types/portfolio";
 import { Button } from "@/components/ui/button";
@@ -24,9 +24,11 @@ import {
   Pencil,
   Lock,
   Star,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { togglePortfolioVisibility } from "@/actions/portfolio";
+import { togglePortfolioVisibility, updateResumesAction } from "@/actions/portfolio";
 import { toast } from "@/components/ui/use-toast";
 import { PersonalInfoForm } from "@/components/dashboard/personal-info-form";
 import { ExperienceSection } from "@/components/dashboard/experience-section";
@@ -101,8 +103,13 @@ export function DashboardContent({ portfolio: initialPortfolio, user }: Dashboar
   const activeResume = resumes.find((r) => r.isActive) || resumes[0];
 
   // ── Resume CRUD ──
-  const updateResumes = (updated: Resume[]) => {
+  const updateResumes = async (updated: Resume[]) => {
     setPortfolio({ ...portfolio, resumes: updated });
+    try {
+      await updateResumesAction(updated);
+    } catch {
+      // silent — local state is the source of truth for responsiveness
+    }
   };
 
   const handleAddResume = () => {
@@ -180,6 +187,39 @@ export function DashboardContent({ portfolio: initialPortfolio, user }: Dashboar
       ? portfolioToResumeData(portfolio)
       : editingResume.data || portfolioToResumeData(portfolio)
     : null;
+
+  // ── Resume image upload ──
+  const resumeImageInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingResumeImageId, setUploadingResumeImageId] = useState<string | null>(null);
+
+  const handleResumeImageUpload = async (resumeId: string, file: File) => {
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      toast({ title: "Invalid file type", description: "Please upload a JPEG, PNG, GIF, or WebP image.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 5MB.", variant: "destructive" });
+      return;
+    }
+    setUploadingResumeImageId(resumeId);
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("file", file);
+      const response = await fetch("/api/upload", { method: "POST", body: formDataUpload });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Upload failed");
+      const updated = resumes.map((r) =>
+        r.id === resumeId ? { ...r, resumeImage: data.url, updatedAt: new Date().toISOString() } : r
+      );
+      updateResumes(updated);
+      toast({ title: "Resume photo uploaded!" });
+    } catch (error) {
+      toast({ title: "Upload failed", description: error instanceof Error ? error.message : "Failed to upload", variant: "destructive" });
+    } finally {
+      setUploadingResumeImageId(null);
+    }
+  };
 
   // ── Portfolio URL - use state to avoid hydration mismatch ──
   const [portfolioUrl, setPortfolioUrl] = useState(`/p/${portfolio.slug}`);
@@ -426,6 +466,31 @@ export function DashboardContent({ portfolio: initialPortfolio, user }: Dashboar
                           <option value="modern">Modern Template</option>
                           <option value="minimal">Minimal Template</option>
                         </select>
+                        {resume.templateId === "modern" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs gap-1 h-6"
+                            disabled={uploadingResumeImageId === resume.id}
+                            onClick={() => {
+                              const input = document.createElement("input");
+                              input.type = "file";
+                              input.accept = "image/jpeg,image/jpg,image/png,image/gif,image/webp";
+                              input.onchange = (e) => {
+                                const file = (e.target as HTMLInputElement).files?.[0];
+                                if (file) handleResumeImageUpload(resume.id, file);
+                              };
+                              input.click();
+                            }}
+                          >
+                            {uploadingResumeImageId === resume.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <ImagePlus className="h-3 w-3" />
+                            )}
+                            {resume.resumeImage ? "Change Photo" : "Add Photo"}
+                          </Button>
+                        )}
                         <span className="text-[10px] text-muted-foreground">
                           Updated {new Date(resume.updatedAt).toLocaleDateString()}
                         </span>

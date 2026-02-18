@@ -636,7 +636,7 @@ export default function DesignCanvas({
 
         toJSON: () => {
           if (!fabricRef.current) return "{}";
-          const json = fabricRef.current.toJSON(["_isArtboard", "excludeFromExport"]) as any;
+          const json = (fabricRef.current as any).toJSON(["_isArtboard", "excludeFromExport"]);
           json.width = designWidthRef.current;
           json.height = designHeightRef.current;
           const ab = artboardRef.current as any;
@@ -703,7 +703,7 @@ export default function DesignCanvas({
             const ab = artboardRef.current as any;
             const bgColor = ab?.fill || "#ffffff";
 
-            const jsonData = fabricRef.current.toJSON(["_isArtboard", "excludeFromExport"]) as any;
+            const jsonData = (fabricRef.current as any).toJSON(["_isArtboard", "excludeFromExport"]);
             const objects = Array.isArray(jsonData.objects) ? jsonData.objects : [];
             jsonData.objects = objects.filter((obj: any) => {
               if (!obj) return false;
@@ -1379,13 +1379,36 @@ export default function DesignCanvas({
 
         duplicate: async () => {
           if (!fabricRef.current) return;
-          const active = fabricRef.current.getActiveObject();
+          const canvas = fabricRef.current;
+          const active = canvas.getActiveObject();
           if (!active) return;
-          const cloned = await active.clone();
-          cloned.set({ left: (active.left || 0) + 20, top: (active.top || 0) + 20 });
-          fabricRef.current.add(cloned);
-          fabricRef.current.setActiveObject(cloned);
-          fabricRef.current.renderAll();
+
+          if (active.type === "activeSelection") {
+            const sel = active as any;
+            const objects = sel.getObjects() as FabricObject[];
+            const clones: FabricObject[] = [];
+            for (const obj of objects) {
+              const cloned = await obj.clone();
+              cloned.set({
+                left: (obj.left || 0) + 20,
+                top: (obj.top || 0) + 20,
+              });
+              canvas.add(cloned);
+              clones.push(cloned);
+            }
+            canvas.discardActiveObject();
+            if (clones.length > 0) {
+              const fb = fabricLib;
+              const newSel = new fb.ActiveSelection(clones, { canvas });
+              canvas.setActiveObject(newSel);
+            }
+          } else {
+            const cloned = await active.clone();
+            cloned.set({ left: (active.left || 0) + 20, top: (active.top || 0) + 20 });
+            canvas.add(cloned);
+            canvas.setActiveObject(cloned);
+          }
+          canvas.renderAll();
         },
 
         toggleDrawingMode: (enabled: boolean) => {

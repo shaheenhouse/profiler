@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
     if (!isGeminiConfigured()) {
       return NextResponse.json(
-        { error: 'AI is not configured. Please add GEMINI_API_KEY to your environment variables.' },
+        { error: 'AI is not configured. Please add GEMINI_API_KEY to your .env.local file.' },
         { status: 503 }
       );
     }

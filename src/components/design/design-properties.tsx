@@ -132,8 +132,22 @@ export function DesignProperties({ selectedObject, canvasRef }: DesignProperties
   const updateProps = useCallback(() => {
     if (!selectedObject) return;
     const shadow = (selectedObject as any).shadow;
+
+    // For groups (SVG icons), read fill from the first visible child
+    let effectiveFill = (selectedObject.fill as string) || "#000000";
+    if (selectedObject.type === "group") {
+      const group = selectedObject as any;
+      const children = group.getObjects ? group.getObjects() : [];
+      for (const child of children) {
+        if (child.fill && child.fill !== "none" && child.fill !== "") {
+          effectiveFill = child.fill;
+          break;
+        }
+      }
+    }
+
     setProps({
-      fill: (selectedObject.fill as string) || "#000000",
+      fill: effectiveFill,
       stroke: (selectedObject.stroke as string) || "",
       strokeWidth: selectedObject.strokeWidth || 0,
       opacity: Math.round((selectedObject.opacity || 1) * 100),
@@ -194,6 +208,26 @@ export function DesignProperties({ selectedObject, canvasRef }: DesignProperties
   const applyProp = (key: string, value: unknown) => {
     if (!selectedObject) return;
     selectedObject.set(key as keyof FabricObject, value as any);
+
+    // For groups (e.g. SVG icons), propagate fill/stroke to child objects
+    if ((key === "fill" || key === "stroke") && selectedObject.type === "group") {
+      const group = selectedObject as any;
+      const children = group.getObjects ? group.getObjects() : [];
+      for (const child of children) {
+        if (key === "fill") {
+          if (child.fill && child.fill !== "none" && child.fill !== "") {
+            child.set("fill", value);
+          }
+        }
+        if (key === "stroke") {
+          if (child.stroke) {
+            child.set("stroke", value);
+          }
+        }
+      }
+      group.dirty = true;
+    }
+
     const canvas = canvasRef.current?.getCanvas();
     canvas?.renderAll();
     updateProps();

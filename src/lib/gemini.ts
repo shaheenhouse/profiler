@@ -1,15 +1,15 @@
-import OpenAI from 'openai';
+import { GoogleGenerativeAI, Part } from '@google/generative-ai';
 
-const apiKey = process.env.OPENAI_API_KEY;
+const apiKey = process.env.GEMINI_API_KEY;
 
-let client: OpenAI | null = null;
+let genAI: GoogleGenerativeAI | null = null;
 
-function getClient(): OpenAI {
-  if (!client) {
-    if (!apiKey) throw new Error('OPENAI_API_KEY is not configured');
-    client = new OpenAI({ apiKey });
+function getClient(): GoogleGenerativeAI {
+  if (!genAI) {
+    if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
+    genAI = new GoogleGenerativeAI(apiKey);
   }
-  return client;
+  return genAI;
 }
 
 export function isGeminiConfigured(): boolean {
@@ -69,9 +69,7 @@ export async function generateDesign(
   height: number,
   referenceImageBase64?: string
 ): Promise<string> {
-  const openai = getClient();
-
-  const userContent: any[] = [];
+  const client = getClient();
 
   let textPrompt = `Create a design with these specifications:
 - Design size: ${width}x${height} pixels
@@ -79,42 +77,43 @@ export async function generateDesign(
 
 Generate a complete Fabric.js JSON with all objects positioned within the ${width}x${height} canvas. Make it visually stunning and professional.`;
 
+  const parts: Part[] = [];
+
   if (referenceImageBase64) {
     textPrompt += '\n\nI have attached a reference image. Recreate this design as closely as possible using Fabric.js objects (text, shapes, colors, layout). Make everything editable. Match the colors, typography, and layout from the image.';
-    
-    userContent.push({ type: 'text', text: textPrompt });
-    userContent.push({
-      type: 'image_url',
-      image_url: {
-        url: referenceImageBase64.startsWith('data:')
-          ? referenceImageBase64
-          : `data:image/png;base64,${referenceImageBase64}`,
-      },
+    parts.push({ text: textPrompt });
+
+    let base64Data = referenceImageBase64;
+    let mimeType = 'image/png';
+    if (base64Data.startsWith('data:')) {
+      const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        base64Data = match[2];
+      }
+    }
+    parts.push({
+      inlineData: { mimeType, data: base64Data },
     });
   } else {
-    userContent.push({ type: 'text', text: textPrompt });
+    parts.push({ text: textPrompt });
   }
 
-  // Use gpt-4o-mini for text-only, gpt-4o for vision tasks
-  const model = referenceImageBase64 ? 'gpt-4o' : 'gpt-4o-mini';
-
-  const response = await openai.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: DESIGN_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    max_tokens: 4096,
-    temperature: 0.7,
-    response_format: referenceImageBase64 ? undefined : { type: 'json_object' },
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: DESIGN_SYSTEM_PROMPT,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 4096,
+      responseMimeType: referenceImageBase64 ? undefined : 'application/json',
+    },
   });
 
-  let text = response.choices[0]?.message?.content || '';
+  const result = await model.generateContent(parts);
+  let text = result.response.text();
 
-  // Clean up response - extract JSON from potential markdown
   text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
-  // Validate it's valid JSON
   try {
     const parsed = JSON.parse(text);
     parsed.width = parsed.width || width;
@@ -228,61 +227,64 @@ export async function extractResumeData(
   contentType: 'text' | 'image' | 'pdf',
   base64Data?: string
 ): Promise<string> {
-  const openai = getClient();
+  const client = getClient();
 
-  const userContent: any[] = [];
+  const parts: Part[] = [];
+  let useVision = false;
 
   if (contentType === 'text') {
-    userContent.push({
-      type: 'text',
+    parts.push({
       text: 'Extract resume data from this text:\n\n' + content,
     });
   } else if (contentType === 'image' && base64Data) {
-    userContent.push({
-      type: 'text',
+    useVision = true;
+    parts.push({
       text: 'Extract all resume data from this image. Read every detail carefully.',
     });
-    userContent.push({
-      type: 'image_url',
-      image_url: {
-        url: base64Data.startsWith('data:')
-          ? base64Data
-          : `data:image/png;base64,${base64Data}`,
-      },
+    let imgData = base64Data;
+    let mimeType = 'image/png';
+    if (imgData.startsWith('data:')) {
+      const match = imgData.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        imgData = match[2];
+      }
+    }
+    parts.push({
+      inlineData: { mimeType, data: imgData },
     });
   } else if (contentType === 'pdf' && base64Data) {
-    // For PDFs, we send as image (GPT-4o can read PDF pages as images)
-    userContent.push({
-      type: 'text',
-      text: 'Extract all resume data from this document image. Read every detail carefully.',
+    useVision = true;
+    parts.push({
+      text: 'Extract all resume data from this document. Read every detail carefully.',
     });
-    userContent.push({
-      type: 'image_url',
-      image_url: {
-        url: base64Data.startsWith('data:')
-          ? base64Data
-          : `data:application/pdf;base64,${base64Data}`,
-      },
+    let pdfData = base64Data;
+    let mimeType = 'application/pdf';
+    if (pdfData.startsWith('data:')) {
+      const match = pdfData.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        pdfData = match[2];
+      }
+    }
+    parts.push({
+      inlineData: { mimeType, data: pdfData },
     });
   }
 
-  // Use gpt-4o for vision tasks, gpt-4o-mini for text only
-  const model = contentType === 'text' ? 'gpt-4o-mini' : 'gpt-4o';
-
-  const response = await openai.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: RESUME_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    max_tokens: 4096,
-    temperature: 0.3,
-    response_format: contentType === 'text' ? { type: 'json_object' } : undefined,
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: RESUME_SYSTEM_PROMPT,
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 4096,
+      responseMimeType: useVision ? undefined : 'application/json',
+    },
   });
 
-  let text = response.choices[0]?.message?.content || '';
+  const result = await model.generateContent(parts);
+  let text = result.response.text();
 
-  // Clean up response
   text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
   try {

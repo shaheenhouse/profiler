@@ -66,7 +66,7 @@ async function createExportCanvas(
   const fabric = await import("fabric");
 
   // Serialize with custom flags so we can remove non-export objects (artboard, helpers).
-  const jsonData = mainCanvas!.toJSON(["_isArtboard", "excludeFromExport"]) as any;
+  const jsonData = (mainCanvas as any).toJSON(["_isArtboard", "excludeFromExport"]);
 
   let detectedArtboardFill: string | null = null;
   const objects = Array.isArray(jsonData.objects) ? jsonData.objects : [];

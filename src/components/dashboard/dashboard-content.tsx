@@ -506,6 +506,7 @@ export function DashboardContent({ portfolio: initialPortfolio, user }: Dashboar
         onOpenChange={setShowResume}
         portfolio={previewPortfolio}
         defaultTemplate={previewResume?.templateId || "classic"}
+        resumeImage={previewResume?.resumeImage}
       />
 
       {/* Resume Data Editor */}

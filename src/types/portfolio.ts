@@ -161,6 +161,7 @@ export interface Resume {
   isActive: boolean;
   isStandard: boolean; // true = always uses profile data, false = has its own data
   data?: ResumeData;   // custom data for non-standard resumes
+  resumeImage?: string; // dedicated image for this resume (used in modern template header)
   createdAt: string;
   updatedAt: string;
 }

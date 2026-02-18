@@ -16,6 +16,7 @@ interface ResumeModalProps {
   onOpenChange: (open: boolean) => void;
   portfolio: Portfolio;
   defaultTemplate?: string;
+  resumeImage?: string;
 }
 
 const TEMPLATES = [
@@ -348,99 +349,129 @@ function ClassicTemplate({ portfolio }: { portfolio: Portfolio }) {
 // TEMPLATE: Modern — Two-column with sidebar
 // Shows ALL data — no slice limits
 // ═══════════════════════════════════════════════════
-function ModernTemplate({ portfolio }: { portfolio: Portfolio }) {
+function ModernTemplate({ portfolio, resumeImage }: { portfolio: Portfolio; resumeImage?: string }) {
   const { personalInfo, education, experience, skills, certifications, projects } = portfolio;
   const langs = safeLanguages(portfolio);
   const skillsByCategory = groupSkills(skills);
   const catEntries = Object.entries(skillsByCategory);
+  const headerImage = resumeImage || personalInfo.profileImage;
 
   return (
     <>
-      {/* ═══ HEADER BANNER WITH PROFILE PHOTO ═══ */}
+      {/* ═══ HEADER BANNER ═══ */}
       <div
         style={{
-          backgroundColor: C.primary,
+          backgroundColor: "#1e293b",
           margin: "-15mm -15mm 0 -15mm",
-          padding: "10mm 15mm",
           color: C.white,
-          display: "flex",
-          alignItems: "center",
-          gap: "15mm",
         }}
       >
-        {/* Profile Photo */}
-        {personalInfo.profileImage && (
-          <div
-            style={{
-              width: "28mm",
-              height: "28mm",
-              borderRadius: "50%",
-              overflow: "hidden",
-              border: "3px solid rgba(255,255,255,0.8)",
-              flexShrink: 0,
-              backgroundColor: C.white,
-            }}
-          >
-            <img
-              src={personalInfo.profileImage}
-              alt={personalInfo.fullName}
+        {/* Top section: Photo + Name + Title + Bio */}
+        <div
+          style={{
+            padding: "10mm 15mm 8mm 15mm",
+            display: "flex",
+            alignItems: "center",
+            gap: "12mm",
+          }}
+        >
+          {/* Profile Photo */}
+          {headerImage && (
+            <div
               style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
+                width: "32mm",
+                height: "32mm",
+                borderRadius: "50%",
+                overflow: "hidden",
+                border: "3px solid rgba(255,255,255,0.25)",
+                flexShrink: 0,
+                backgroundColor: "#334155",
               }}
-            />
+            >
+              <img
+                src={headerImage}
+                alt={personalInfo.fullName}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            </div>
+          )}
+
+          {/* Name, Title, Bio */}
+          <div style={{ flex: 1 }}>
+            <h1 style={{ fontSize: "22pt", fontWeight: 700, margin: 0, letterSpacing: "0.3px" }}>
+              {personalInfo.fullName || "Your Name"}
+            </h1>
+            <p style={{ fontSize: "11pt", margin: "1.5mm 0 0 0", opacity: 0.85, fontWeight: 500 }}>
+              {personalInfo.title || "Professional Title"}
+            </p>
+            {personalInfo.bio && (
+              <p style={{ fontSize: "8pt", margin: "3mm 0 0 0", opacity: 0.7, lineHeight: "1.55", textAlign: "justify" }}>
+                {personalInfo.bio}
+              </p>
+            )}
           </div>
-        )}
-        
-        {/* Name and Contact Info */}
-        <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: "22pt", fontWeight: 700, margin: 0 }}>{personalInfo.fullName || "Your Name"}</h1>
-          <p style={{ fontSize: "12pt", margin: "1mm 0 0 0", opacity: 0.9 }}>{personalInfo.title || "Professional Title"}</p>
-          <p style={{ fontSize: "8.5pt", margin: "3mm 0 0 0", opacity: 0.85 }}>
-            {[
-              personalInfo.email && (
-                <a key="email" href={`mailto:${personalInfo.email}`} style={{ color: C.white, textDecoration: "none" }}>
-                  {personalInfo.email}
-                </a>
-              ),
-              personalInfo.phone,
-              personalInfo.location,
-              ...personalInfo.socialLinks.map((l) => (
-                <a
-                  key={l.id}
-                  href={l.url.startsWith("http") ? l.url : `https://${l.url}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: C.white, textDecoration: "none" }}
-                >
-                  {l.label || l.url}
-                </a>
-              )),
-            ]
-              .filter(Boolean)
-              .reduce<React.ReactNode[]>((acc, item, i) => {
-                if (i > 0) acc.push(<span key={`s${i}`}> &nbsp;·&nbsp; </span>);
-                acc.push(item);
-                return acc;
-              }, [])}
-          </p>
+        </div>
+
+        {/* Contact info bar */}
+        <div
+          style={{
+            backgroundColor: "rgba(0,0,0,0.2)",
+            padding: "3mm 15mm",
+            fontSize: "7.5pt",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "2mm",
+          }}
+        >
+          {[
+            personalInfo.email && (
+              <a key="email" href={`mailto:${personalInfo.email}`} style={{ color: "rgba(255,255,255,0.9)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "1.5mm" }}>
+                <span style={{ fontSize: "7pt" }}>✉</span> {personalInfo.email}
+              </a>
+            ),
+            personalInfo.phone && (
+              <span key="phone" style={{ display: "inline-flex", alignItems: "center", gap: "1.5mm", color: "rgba(255,255,255,0.9)" }}>
+                <span style={{ fontSize: "7pt" }}>☎</span> {personalInfo.phone}
+              </span>
+            ),
+            personalInfo.location && (
+              <span key="location" style={{ display: "inline-flex", alignItems: "center", gap: "1.5mm", color: "rgba(255,255,255,0.9)" }}>
+                <span style={{ fontSize: "7pt" }}>📍</span> {personalInfo.location}
+              </span>
+            ),
+            ...personalInfo.socialLinks.map((l) => (
+              <a
+                key={l.id}
+                href={l.url.startsWith("http") ? l.url : `https://${l.url}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "rgba(255,255,255,0.9)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "1.5mm" }}
+              >
+                <span style={{ fontSize: "7pt" }}>
+                  {l.platform === "github" ? "🔗" : l.platform === "linkedin" ? "🔗" : "🌐"}
+                </span>
+                {l.label || l.url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
+              </a>
+            )),
+          ]
+            .filter(Boolean)
+            .reduce<React.ReactNode[]>((acc, item, i) => {
+              if (i > 0) acc.push(<span key={`sep${i}`} style={{ color: "rgba(255,255,255,0.4)", margin: "0 1mm" }}>•</span>);
+              acc.push(item);
+              return acc;
+            }, [])}
         </div>
       </div>
 
       {/* ═══ Two columns using float (NOT table — tables can't page-break mid-row) ═══ */}
       <div style={{ marginTop: "5mm", overflow: "hidden" }}>
-        {/* LEFT COLUMN (65%) — Profile, Experience, Projects */}
+        {/* LEFT COLUMN (65%) — Experience, Projects */}
         <div style={{ float: "left", width: "63%", paddingRight: "5mm" }}>
-          {personalInfo.bio && (
-            <div style={{ marginBottom: "5mm", ...AVOID_BREAK }}>
-              <SH title="Profile" accent={C.primary} />
-              <p style={{ fontSize: "9.5pt", color: C.textMuted, lineHeight: "1.5", margin: 0, textAlign: "justify" }}>
-                {personalInfo.bio}
-              </p>
-            </div>
-          )}
-
           {experience.length > 0 && (
             <div style={{ marginBottom: "5mm" }}>
               <SH title="Experience" accent={C.primary} />
@@ -770,7 +801,7 @@ function MinimalTemplate({ portfolio }: { portfolio: Portfolio }) {
 // ═══════════════════════════════════════════════════
 // Main Resume Modal
 // ═══════════════════════════════════════════════════
-export function ResumeModal({ open, onOpenChange, portfolio, defaultTemplate }: ResumeModalProps) {
+export function ResumeModal({ open, onOpenChange, portfolio, defaultTemplate, resumeImage }: ResumeModalProps) {
   const resumeRef = useRef<HTMLDivElement>(null);
   const [templateId, setTemplateId] = useState<TemplateId>((defaultTemplate as TemplateId) || "classic");
   const [isDownloading, setIsDownloading] = useState(false);
@@ -952,7 +983,7 @@ export function ResumeModal({ open, onOpenChange, portfolio, defaultTemplate }: 
               }}
             >
               {templateId === "classic" && <ClassicTemplate portfolio={portfolio} />}
-              {templateId === "modern" && <ModernTemplate portfolio={portfolio} />}
+              {templateId === "modern" && <ModernTemplate portfolio={portfolio} resumeImage={resumeImage} />}
               {templateId === "minimal" && <MinimalTemplate portfolio={portfolio} />}
             </div>
           </div>

@@ -1054,6 +1054,7 @@ export function PublicPortfolio({ portfolio }: PublicPortfolioProps) {
           return portfolio;
         })()}
         defaultTemplate={(portfolio.resumes || []).find((r) => r.isActive)?.templateId || "classic"}
+        resumeImage={(portfolio.resumes || []).find((r) => r.isActive)?.resumeImage}
       />
     </div>
   );

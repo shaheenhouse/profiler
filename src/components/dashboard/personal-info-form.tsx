@@ -82,8 +82,15 @@ export function PersonalInfoForm({ portfolio, onUpdate }: PersonalInfoFormProps)
         throw new Error(data.error || "Upload failed");
       }
 
-      setFormData({ ...formData, profileImage: data.url });
-      toast({ title: "Image uploaded successfully!" });
+      const updatedFormData = { ...formData, profileImage: data.url };
+      setFormData(updatedFormData);
+      try {
+        const updated = await updatePersonalInfo(updatedFormData);
+        onUpdate(updated);
+        toast({ title: "Image uploaded and saved!" });
+      } catch {
+        toast({ title: "Image uploaded!", description: "Click Save Changes to persist." });
+      }
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -262,7 +269,14 @@ export function PersonalInfoForm({ portfolio, onUpdate }: PersonalInfoFormProps)
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setFormData({ ...formData, profileImage: "" })}
+                  onClick={async () => {
+                    const updatedFormData = { ...formData, profileImage: "" };
+                    setFormData(updatedFormData);
+                    try {
+                      const updated = await updatePersonalInfo(updatedFormData);
+                      onUpdate(updated);
+                    } catch { /* ignore */ }
+                  }}
                   className="text-destructive hover:text-destructive/80 text-xs"
                 >
                   Remove Photo

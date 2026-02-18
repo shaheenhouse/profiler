@@ -112,52 +112,49 @@ export default function DesignCanvas({
     centerTimersRef.current = [];
   }, []);
 
-  // Center artboard using Fabric.js viewport transform.
-  // Canvas fills the entire workspace. VPT handles centering and zoom-to-fit.
+  // Center the artboard via CSS flexbox + CSS transform scale.
+  // Canvas pixel dimensions = artboard dimensions (1:1 mapping).
+  // Fabric viewport is identity. CSS scale handles zoom-to-fit.
+  // The wrapper is a flex container that auto-centers the container div.
   const centerArtboard = useCallback((canvas: FabricCanvas, dw: number, dh: number) => {
-    const ww = wrapperRef.current?.clientWidth;
-    const wh = wrapperRef.current?.clientHeight;
-    if (!ww || !wh || ww < 10 || wh < 10) return;
+    const wrapper = wrapperRef.current;
+    const container = containerRef.current;
+    if (!wrapper || !container) return;
+    const ww = wrapper.clientWidth;
+    const wh = wrapper.clientHeight;
+    if (ww < 10 || wh < 10) return;
 
-    // Canvas must fill the entire workspace
-    if (Math.abs(canvas.getWidth() - ww) > 1 || Math.abs(canvas.getHeight() - wh) > 1) {
-      canvas.setDimensions({ width: ww, height: wh });
-    }
+    // Canvas pixel size = artboard size (1:1 coordinate space)
+    canvas.setDimensions({ width: dw, height: dh });
 
-    // Calculate zoom to fit artboard with padding
+    // Reset Fabric viewport to identity - no internal zoom/pan
+    canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
+
+    // Calculate CSS scale so artboard fits within wrapper with padding
     const padding = 60;
-    const zoom = Math.min(
+    const scale = Math.min(
       (ww - padding * 2) / dw,
       (wh - padding * 2) / dh,
-      3
+      2
     );
 
-    // Center the artboard in the workspace via viewport transform
-    const tx = (ww - dw * zoom) / 2;
-    const ty = (wh - dh * zoom) / 2;
+    // Set the container to exact artboard pixel size and apply CSS scale.
+    // Flexbox on the wrapper centers the scaled container automatically.
+    container.style.width = `${dw}px`;
+    container.style.height = `${dh}px`;
+    container.style.transform = `scale(${scale})`;
+    container.style.transformOrigin = "center center";
 
-    // Clear any stale CSS transform/margins left by older implementations.
-    // Centering/zooming must be controlled only by Fabric viewport transform.
-    if (containerRef.current) {
-      containerRef.current.style.marginLeft = "0px";
-      containerRef.current.style.marginTop = "0px";
-      const fabricContainer =
-        (containerRef.current.querySelector('[data-fabric="wrapper"]') as HTMLElement) ||
-        (containerRef.current.querySelector(".canvas-container") as HTMLElement);
-      if (fabricContainer) {
-        fabricContainer.style.transform = "";
-        fabricContainer.style.transformOrigin = "";
-      }
+    // Also set the Fabric wrapper element dimensions to match
+    const fabricWrapper = container.querySelector(".canvas-container") as HTMLElement;
+    if (fabricWrapper) {
+      fabricWrapper.style.width = `${dw}px`;
+      fabricWrapper.style.height = `${dh}px`;
     }
 
-    cssZoomRef.current = zoom;
-    canvas.setViewportTransform([zoom, 0, 0, zoom, tx, ty]);
-    console.log(`[VPT-DBG] set tx=${tx.toFixed(1)} ty=${ty.toFixed(1)} vpt=${(canvas.viewportTransform || []).join(",")}`);
-    requestAnimationFrame(() => {
-      console.log(`[VPT-DBG] raf vpt=${(canvas.viewportTransform || []).join(",")}`);
-    });
+    cssZoomRef.current = scale;
     canvas.requestRenderAll();
-    onZoomChangeRef.current?.(zoom);
+    onZoomChangeRef.current?.(scale);
   }, []);
 
   // Schedule centering attempts - layout may not be ready immediately
@@ -192,12 +189,10 @@ export default function DesignCanvas({
       canvasEl = document.createElement("canvas");
       containerRef.current.appendChild(canvasEl);
 
-      const cw = wrapperRef.current?.clientWidth || width + 200;
-      const ch = wrapperRef.current?.clientHeight || height + 200;
-
+      // Canvas dimensions = exact artboard size. CSS handles scaling/centering.
       const canvas = new fabric.Canvas(canvasEl, {
-        width: cw,
-        height: ch,
+        width,
+        height,
         backgroundColor: "transparent",
         preserveObjectStacking: true,
         selection: true,
@@ -215,10 +210,10 @@ export default function DesignCanvas({
 
       fabricRef.current = canvas;
 
-      // Create artboard with shadow
+      // Create artboard with shadow - at origin so VPT centering math works
       const artboard = new fabric.Rect({
-        left: 200,
-        top: 120,
+        left: 0,
+        top: 0,
         width,
         height,
         fill: "#ffffff",
@@ -319,12 +314,10 @@ export default function DesignCanvas({
         panLastX = ev.clientX || 0;
         panLastY = ev.clientY || 0;
 
-        // Pan by adjusting Fabric viewport transform
-        const vpt = canvas.viewportTransform;
-        if (vpt) {
-          vpt[4] += dx;
-          vpt[5] += dy;
-          canvas.requestRenderAll();
+        // Pan by scrolling the wrapper (CSS transform handles positioning)
+        if (wrapperRef.current) {
+          wrapperRef.current.scrollLeft -= dx;
+          wrapperRef.current.scrollTop -= dy;
         }
       });
       canvas.on("mouse:up", () => {
@@ -365,19 +358,19 @@ export default function DesignCanvas({
         }
       });
 
-      // Ctrl+Scroll zoom (like Canva) - zoom towards cursor position
+      // Ctrl+Scroll zoom - CSS transform based
       canvas.on("mouse:wheel", (opt) => {
         if (!opt.e.ctrlKey && !opt.e.metaKey) return;
         opt.e.preventDefault();
         opt.e.stopPropagation();
+        if (!containerRef.current) return;
         const delta = opt.e.deltaY;
-        let zoom = canvas.getZoom();
+        let zoom = cssZoomRef.current;
         zoom *= 0.999 ** delta;
-        if (zoom > 10) zoom = 10;
-        if (zoom < 0.02) zoom = 0.02;
-        const point = new fabricLib.Point(opt.e.offsetX, opt.e.offsetY);
-        canvas.zoomToPoint(point, zoom);
+        if (zoom > 5) zoom = 5;
+        if (zoom < 0.1) zoom = 0.1;
         cssZoomRef.current = zoom;
+        containerRef.current.style.transform = `scale(${zoom})`;
         onZoomChangeRef.current?.(zoom);
       });
 
@@ -654,15 +647,11 @@ export default function DesignCanvas({
 
             fabricRef.current.backgroundColor = "transparent";
 
-            // Ensure canvas fills workspace after JSON load (JSON may reset dimensions)
-            const ww = wrapperRef.current?.clientWidth || 0;
-            const wh = wrapperRef.current?.clientHeight || 0;
-            if (ww > 10 && wh > 10) {
-              fabricRef.current.setDimensions({ width: ww, height: wh });
-            }
-
             const dw = designWidthRef.current;
             const dh = designHeightRef.current;
+
+            // Canvas size must be artboard size (not wrapper size)
+            fabricRef.current.setDimensions({ width: dw, height: dh });
 
             const fb = fabricLib;
             const ab = new fb.Rect({
@@ -684,7 +673,6 @@ export default function DesignCanvas({
             fabricRef.current.sendObjectToBack(ab);
             artboardRef.current = ab;
 
-            // Center the design after loading
             scheduleCenteringBurst(fabricRef.current, dw, dh);
             saveToHistory();
           } catch (err) {
@@ -1336,70 +1324,68 @@ export default function DesignCanvas({
           });
         },
 
-        // ── Zoom ──
+        // ── Zoom (CSS transform) ──
         zoomIn: () => {
-          if (!fabricRef.current) return;
-          let zoom = fabricRef.current.getZoom() * 1.15;
-          if (zoom > 10) zoom = 10;
-          const ww = wrapperRef.current?.clientWidth || 0;
-          const wh = wrapperRef.current?.clientHeight || 0;
-          const center = new fabricLib.Point(ww / 2, wh / 2);
-          fabricRef.current.zoomToPoint(center, zoom);
-          cssZoomRef.current = zoom;
-          onZoomChangeRef.current?.(zoom);
+          if (!containerRef.current) return;
+          let z = cssZoomRef.current * 1.2;
+          if (z > 5) z = 5;
+          cssZoomRef.current = z;
+          containerRef.current.style.transform = `scale(${z})`;
+          onZoomChangeRef.current?.(z);
         },
         zoomOut: () => {
-          if (!fabricRef.current) return;
-          let zoom = fabricRef.current.getZoom() * 0.85;
-          if (zoom < 0.02) zoom = 0.02;
-          const ww = wrapperRef.current?.clientWidth || 0;
-          const wh = wrapperRef.current?.clientHeight || 0;
-          const center = new fabricLib.Point(ww / 2, wh / 2);
-          fabricRef.current.zoomToPoint(center, zoom);
-          cssZoomRef.current = zoom;
-          onZoomChangeRef.current?.(zoom);
+          if (!containerRef.current) return;
+          let z = cssZoomRef.current * 0.8;
+          if (z < 0.1) z = 0.1;
+          cssZoomRef.current = z;
+          containerRef.current.style.transform = `scale(${z})`;
+          onZoomChangeRef.current?.(z);
         },
         resetZoom: () => {
-          if (!fabricRef.current) return;
-          const ww = wrapperRef.current?.clientWidth || 0;
-          const wh = wrapperRef.current?.clientHeight || 0;
-          const dw = designWidthRef.current;
-          const dh = designHeightRef.current;
-          const tx = (ww - dw) / 2;
-          const ty = (wh - dh) / 2;
+          if (!containerRef.current) return;
           cssZoomRef.current = 1;
-          fabricRef.current.setViewportTransform([1, 0, 0, 1, tx, ty]);
+          containerRef.current.style.transform = `scale(1)`;
           onZoomChangeRef.current?.(1);
         },
         zoomToFit: () => {
           if (!fabricRef.current) return;
           centerArtboard(fabricRef.current, designWidthRef.current, designHeightRef.current);
         },
-        getZoom: () => fabricRef.current?.getZoom() || cssZoomRef.current,
+        getZoom: () => cssZoomRef.current,
 
         duplicate: async () => {
           if (!fabricRef.current) return;
           const canvas = fabricRef.current;
           const active = canvas.getActiveObject();
           if (!active) return;
+          const fb = fabricLib;
 
           if (active.type === "activeSelection") {
             const sel = active as any;
+            const selTransform = sel.calcTransformMatrix();
             const objects = sel.getObjects() as FabricObject[];
-            const clones: FabricObject[] = [];
+            const addedClones: FabricObject[] = [];
+
             for (const obj of objects) {
               const cloned = await obj.clone();
+              // Object coords inside ActiveSelection are relative to the group.
+              // Multiply by the group's transform matrix to get absolute canvas coords.
+              const objTransform = obj.calcTransformMatrix();
+              const absLeft = objTransform[4];
+              const absTop = objTransform[5];
               cloned.set({
-                left: (obj.left || 0) + 20,
-                top: (obj.top || 0) + 20,
+                left: absLeft + 20,
+                top: absTop + 20,
               });
+              cloned.setCoords();
               canvas.add(cloned);
-              clones.push(cloned);
+              addedClones.push(cloned);
             }
+
             canvas.discardActiveObject();
-            if (clones.length > 0) {
-              const fb = fabricLib;
-              const newSel = new fb.ActiveSelection(clones, { canvas });
+
+            if (addedClones.length > 0) {
+              const newSel = new fb.ActiveSelection(addedClones, { canvas });
               canvas.setActiveObject(newSel);
             }
           } else {
@@ -1408,7 +1394,9 @@ export default function DesignCanvas({
             canvas.add(cloned);
             canvas.setActiveObject(cloned);
           }
-          canvas.renderAll();
+          canvas.requestRenderAll();
+          saveToHistory();
+          onCanvasModified?.();
         },
 
         toggleDrawingMode: (enabled: boolean) => {
@@ -1673,7 +1661,10 @@ export default function DesignCanvas({
       style={{
         position: "absolute",
         inset: 0,
-        overflow: "hidden",
+        overflow: "auto",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         background: "#f0f0f0",
         backgroundImage:
           "radial-gradient(circle, rgba(0, 0, 0, 0.06) 1px, transparent 1px)",
@@ -1682,7 +1673,11 @@ export default function DesignCanvas({
     >
       <div
         ref={containerRef}
-        style={{ width: "100%", height: "100%" }}
+        style={{
+          flexShrink: 0,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)",
+          borderRadius: "2px",
+        }}
       />
     </div>
   );

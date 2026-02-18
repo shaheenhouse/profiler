@@ -100,7 +100,7 @@ Generate a complete Fabric.js JSON with all objects positioned within the ${widt
   }
 
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     systemInstruction: DESIGN_SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0.7,
@@ -273,7 +273,7 @@ export async function extractResumeData(
   }
 
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     systemInstruction: RESUME_SYSTEM_PROMPT,
     generationConfig: {
       temperature: 0.3,

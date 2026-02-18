@@ -257,6 +257,7 @@ export function DesignEditor({
               Initializing canvas...
             </div>
           )}
+          
           <DesignCanvas
             width={designWidth}
             height={designHeight}

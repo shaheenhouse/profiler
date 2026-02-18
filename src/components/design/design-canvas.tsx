@@ -83,7 +83,7 @@ export default function DesignCanvas({
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number>(-1);
   const isLoadingRef = useRef(false);
-  const clipboardRef = useRef<FabricObject | null>(null);
+  const clipboardRef = useRef<FabricObject[] | null>(null);
   const artboardRef = useRef<FabricObject | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const designWidthRef = useRef(width);
@@ -474,7 +474,7 @@ export default function DesignCanvas({
 
         const target = fcFindTarget(opt.e);
         const tAny = target as any;
-        if (target && tAny.type !== "activeSelection" && !tAny._isConnector && !tAny._isBgImage
+        if (target && tAny.type !== "activeselection" && !tAny._isConnector && !tAny._isBgImage
           && !(tAny.group && tAny.group._isConnector)) {
           fcHoveredShape = target;
           const ports = fcGetPorts(target);
@@ -1095,7 +1095,7 @@ export default function DesignCanvas({
           const canvas = fabricRef.current;
           if (!canvas) return;
           const active = canvas.getActiveObject();
-          if (!active || active.type !== "activeSelection") return;
+          if (!active || active.type !== "activeselection") return;
           try {
             const fb = fabricLib;
             const selection = active as any;
@@ -1137,43 +1137,75 @@ export default function DesignCanvas({
         // ── Clipboard ──
         copySelected: async () => {
           if (!fabricRef.current) return;
-          const active = fabricRef.current.getActiveObject();
+          const canvas = fabricRef.current;
+          const active = canvas.getActiveObject();
           if (!active) return;
-          clipboardRef.current = await active.clone();
+          if (active.type === "activeselection") {
+            const originals = [...(active as any).getObjects()] as FabricObject[];
+            canvas.discardActiveObject();
+            const clones: FabricObject[] = [];
+            for (const obj of originals) {
+              clones.push(await obj.clone());
+            }
+            const sel = new fabricLib.ActiveSelection(originals, { canvas });
+            canvas.setActiveObject(sel);
+            canvas.renderAll();
+            clipboardRef.current = clones;
+          } else {
+            clipboardRef.current = [await active.clone()];
+          }
         },
 
         cutSelected: async () => {
           if (!fabricRef.current) return;
-          const active = fabricRef.current.getActiveObject();
+          const canvas = fabricRef.current;
+          const active = canvas.getActiveObject();
           if (!active) return;
-          clipboardRef.current = await active.clone();
-          fabricRef.current.remove(active);
-          fabricRef.current.discardActiveObject();
-          fabricRef.current.renderAll();
+          if (active.type === "activeselection") {
+            const originals = [...(active as any).getObjects()] as FabricObject[];
+            canvas.discardActiveObject();
+            const clones: FabricObject[] = [];
+            for (const obj of originals) {
+              clones.push(await obj.clone());
+            }
+            for (const obj of originals) {
+              canvas.remove(obj);
+            }
+            clipboardRef.current = clones;
+          } else {
+            clipboardRef.current = [await active.clone()];
+            canvas.remove(active);
+          }
+          canvas.discardActiveObject();
+          canvas.renderAll();
         },
 
         paste: async () => {
-          if (!fabricRef.current || !clipboardRef.current) return;
-          const cloned = await clipboardRef.current.clone();
-          cloned.set({
-            left: (cloned.left || 0) + 20,
-            top: (cloned.top || 0) + 20,
-          });
-          if (cloned.type === "activeSelection") {
-            cloned.canvas = fabricRef.current;
-            (cloned as any).forEachObject((obj: FabricObject) => {
-              fabricRef.current!.add(obj);
+          if (!fabricRef.current || !clipboardRef.current || clipboardRef.current.length === 0) return;
+          const canvas = fabricRef.current;
+          const clones: FabricObject[] = [];
+          for (const src of clipboardRef.current) {
+            const c = await src.clone();
+            c.set({
+              left: (src.left || 0) + 20,
+              top: (src.top || 0) + 20,
             });
-            cloned.setCoords();
-          } else {
-            fabricRef.current.add(cloned);
+            canvas.add(c);
+            clones.push(c);
           }
-          clipboardRef.current!.set({
-            left: (clipboardRef.current!.left || 0) + 20,
-            top: (clipboardRef.current!.top || 0) + 20,
-          });
-          fabricRef.current.setActiveObject(cloned);
-          fabricRef.current.renderAll();
+          for (const src of clipboardRef.current) {
+            src.set({
+              left: (src.left || 0) + 20,
+              top: (src.top || 0) + 20,
+            });
+          }
+          if (clones.length === 1) {
+            canvas.setActiveObject(clones[0]);
+          } else {
+            const sel = new fabricLib.ActiveSelection(clones, { canvas });
+            canvas.setActiveObject(sel);
+          }
+          canvas.renderAll();
         },
 
         // ── Alignment ──
@@ -1273,21 +1305,22 @@ export default function DesignCanvas({
           const canvas = fabricRef.current;
           const active = canvas.getActiveObject();
           if (!active) return;
-          const fb = fabricLib;
 
-          if (active.type === "activeSelection") {
-            const cloned = await active.clone();
+          if (active.type === "activeselection") {
+            const originals = [...(active as any).getObjects()] as FabricObject[];
             canvas.discardActiveObject();
-            cloned.set({
-              left: (cloned.left || 0) + 20,
-              top: (cloned.top || 0) + 20,
-            });
-            cloned.canvas = canvas;
-            (cloned as any).forEachObject((obj: FabricObject) => {
-              canvas.add(obj);
-            });
-            cloned.setCoords();
-            canvas.setActiveObject(cloned);
+            const clones: FabricObject[] = [];
+            for (const obj of originals) {
+              const c = await obj.clone();
+              c.set({
+                left: (obj.left || 0) + 20,
+                top: (obj.top || 0) + 20,
+              });
+              canvas.add(c);
+              clones.push(c);
+            }
+            const sel = new fabricLib.ActiveSelection(clones, { canvas });
+            canvas.setActiveObject(sel);
           } else {
             const cloned = await active.clone();
             cloned.set({ left: (active.left || 0) + 20, top: (active.top || 0) + 20 });

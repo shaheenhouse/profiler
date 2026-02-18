@@ -280,7 +280,7 @@ export function DesignEditor({
               className="flex items-center gap-0.5 bg-[#1e1e3a]/95 backdrop-blur-md rounded-lg px-2 py-1 shadow-lg border border-white/10"
             >
               {/* Group button - when multiple objects selected */}
-              {selectedObject.type === "activeSelection" && (
+              {selectedObject.type === "activeselection" && (
                 <button
                   onClick={() => canvasAPIRef.current?.group()}
                   className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs px-2.5 py-1.5 rounded hover:bg-white/10 transition-colors"

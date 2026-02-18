@@ -112,10 +112,6 @@ export default function DesignCanvas({
     centerTimersRef.current = [];
   }, []);
 
-  // Center the artboard via CSS flexbox + CSS transform scale.
-  // Canvas pixel dimensions = artboard dimensions (1:1 mapping).
-  // Fabric viewport is identity. CSS scale handles zoom-to-fit.
-  // The wrapper is a flex container that auto-centers the container div.
   const centerArtboard = useCallback((canvas: FabricCanvas, dw: number, dh: number) => {
     const wrapper = wrapperRef.current;
     const container = containerRef.current;
@@ -124,13 +120,9 @@ export default function DesignCanvas({
     const wh = wrapper.clientHeight;
     if (ww < 10 || wh < 10) return;
 
-    // Canvas pixel size = artboard size (1:1 coordinate space)
     canvas.setDimensions({ width: dw, height: dh });
-
-    // Reset Fabric viewport to identity - no internal zoom/pan
     canvas.viewportTransform = [1, 0, 0, 1, 0, 0];
 
-    // Calculate CSS scale so artboard fits within wrapper with padding
     const padding = 60;
     const scale = Math.min(
       (ww - padding * 2) / dw,
@@ -138,19 +130,12 @@ export default function DesignCanvas({
       2
     );
 
-    // Set the container to exact artboard pixel size and apply CSS scale.
-    // Flexbox on the wrapper centers the scaled container automatically.
+    // Let Fabric's .canvas-container dictate the container size.
+    // We just apply the CSS scale transform to the container for zoom-to-fit.
     container.style.width = `${dw}px`;
     container.style.height = `${dh}px`;
     container.style.transform = `scale(${scale})`;
     container.style.transformOrigin = "center center";
-
-    // Also set the Fabric wrapper element dimensions to match
-    const fabricWrapper = container.querySelector(".canvas-container") as HTMLElement;
-    if (fabricWrapper) {
-      fabricWrapper.style.width = `${dw}px`;
-      fabricWrapper.style.height = `${dh}px`;
-    }
 
     cssZoomRef.current = scale;
     canvas.requestRenderAll();
@@ -189,17 +174,15 @@ export default function DesignCanvas({
       canvasEl = document.createElement("canvas");
       containerRef.current.appendChild(canvasEl);
 
-      // Canvas dimensions = exact artboard size. CSS handles scaling/centering.
       const canvas = new fabric.Canvas(canvasEl, {
         width,
         height,
-        backgroundColor: "transparent",
+        backgroundColor: "#ffffff",
         preserveObjectStacking: true,
         selection: true,
         controlsAboveOverlay: true,
         fireRightClick: true,
         stopContextMenu: true,
-        enableRetinaScaling: false,
       });
 
       if (!isMounted) {
@@ -209,32 +192,7 @@ export default function DesignCanvas({
       }
 
       fabricRef.current = canvas;
-
-      // Create artboard with shadow - at origin so VPT centering math works
-      const artboard = new fabric.Rect({
-        left: 0,
-        top: 0,
-        width,
-        height,
-        fill: "#ffffff",
-        stroke: "#d1d5db",
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-        hoverCursor: "default",
-      } as any);
-      try {
-        (artboard as any).shadow = new fabric.Shadow({
-          color: "rgba(0,0,0,0.15)",
-          blur: 20,
-          offsetX: 0,
-          offsetY: 4,
-        });
-      } catch { /* shadow optional */ }
-      (artboard as any)._isArtboard = true;
-      canvas.add(artboard);
-      artboardRef.current = artboard;
+      artboardRef.current = null;
 
       // Center artboard and keep recentering while layout settles.
       scheduleCenteringBurst(canvas, width, height);
@@ -516,7 +474,7 @@ export default function DesignCanvas({
 
         const target = fcFindTarget(opt.e);
         const tAny = target as any;
-        if (target && tAny.type !== "activeSelection" && !tAny._isConnector && !tAny._isArtboard && !tAny._isBgImage
+        if (target && tAny.type !== "activeSelection" && !tAny._isConnector && !tAny._isBgImage
           && !(tAny.group && tAny.group._isConnector)) {
           fcHoveredShape = target;
           const ports = fcGetPorts(target);
@@ -629,11 +587,10 @@ export default function DesignCanvas({
 
         toJSON: () => {
           if (!fabricRef.current) return "{}";
-          const json = (fabricRef.current as any).toJSON(["_isArtboard", "excludeFromExport"]);
+          const json = fabricRef.current.toJSON();
           json.width = designWidthRef.current;
           json.height = designHeightRef.current;
-          const ab = artboardRef.current as any;
-          json.background = ab?.fill || "#ffffff";
+          json.background = fabricRef.current.backgroundColor || "#ffffff";
           return JSON.stringify(json);
         },
 
@@ -645,35 +602,13 @@ export default function DesignCanvas({
             const bgColor = parsed.background || parsed.backgroundColor || "#ffffff";
             await fabricRef.current.loadFromJSON(parsed);
 
-            fabricRef.current.backgroundColor = "transparent";
+            fabricRef.current.backgroundColor = bgColor;
+            fabricRef.current.setDimensions({
+              width: designWidthRef.current,
+              height: designHeightRef.current,
+            });
 
-            const dw = designWidthRef.current;
-            const dh = designHeightRef.current;
-
-            // Canvas size must be artboard size (not wrapper size)
-            fabricRef.current.setDimensions({ width: dw, height: dh });
-
-            const fb = fabricLib;
-            const ab = new fb.Rect({
-              left: 0, top: 0, width: dw, height: dh,
-              fill: bgColor,
-              stroke: "#d1d5db",
-              strokeWidth: 1,
-              selectable: false, evented: false,
-              excludeFromExport: true,
-              hoverCursor: "default",
-            } as any);
-            try {
-              (ab as any).shadow = new fb.Shadow({
-                color: "rgba(0,0,0,0.15)", blur: 20, offsetX: 0, offsetY: 4,
-              });
-            } catch { /* shadow optional */ }
-            (ab as any)._isArtboard = true;
-            fabricRef.current.add(ab);
-            fabricRef.current.sendObjectToBack(ab);
-            artboardRef.current = ab;
-
-            scheduleCenteringBurst(fabricRef.current, dw, dh);
+            scheduleCenteringBurst(fabricRef.current, designWidthRef.current, designHeightRef.current);
             saveToHistory();
           } catch (err) {
             console.error("Error loading canvas JSON:", err);
@@ -688,17 +623,9 @@ export default function DesignCanvas({
             const fb = fabricLib;
             const dw = designWidthRef.current;
             const dh = designHeightRef.current;
-            const ab = artboardRef.current as any;
-            const bgColor = ab?.fill || "#ffffff";
+            const bgColor = (fabricRef.current.backgroundColor as string) || "#ffffff";
 
-            const jsonData = (fabricRef.current as any).toJSON(["_isArtboard", "excludeFromExport"]);
-            const objects = Array.isArray(jsonData.objects) ? jsonData.objects : [];
-            jsonData.objects = objects.filter((obj: any) => {
-              if (!obj) return false;
-              if (obj._isArtboard) return false;
-              if (obj.excludeFromExport === true) return false;
-              return true;
-            });
+            const jsonData = fabricRef.current.toJSON();
             jsonData.width = dw;
             jsonData.height = dh;
             jsonData.background = bgColor;
@@ -1072,9 +999,7 @@ export default function DesignCanvas({
 
         setBackgroundColor: (color: string) => {
           if (!fabricRef.current) return;
-          if (artboardRef.current) {
-            (artboardRef.current as any).set("fill", color);
-          }
+          fabricRef.current.backgroundColor = color;
           fabricRef.current.renderAll();
           saveToHistory();
           onCanvasModified?.();
@@ -1099,15 +1024,7 @@ export default function DesignCanvas({
             if (existing) fabricRef.current.remove(existing);
 
             fabricRef.current.add(img);
-            const artboardIdx = fabricRef.current.getObjects().indexOf(artboardRef.current!);
-            if (artboardIdx >= 0) {
-              const objects = fabricRef.current.getObjects();
-              const imgIdx = objects.indexOf(img);
-              if (imgIdx !== artboardIdx + 1) {
-                fabricRef.current.remove(img);
-                fabricRef.current.insertAt(artboardIdx + 1, img);
-              }
-            }
+            fabricRef.current.sendObjectToBack(img);
             fabricRef.current.renderAll();
             saveToHistory();
             onCanvasModified?.();
@@ -1119,7 +1036,7 @@ export default function DesignCanvas({
         deleteSelected: () => {
           if (!fabricRef.current) return;
           const active = fabricRef.current.getActiveObjects().filter(
-            (o: any) => !(o as any)._isArtboard && !(o as any)._isBgImage
+            (o: any) => !(o as any)._isBgImage
           );
           if (active.length > 0) {
             active.forEach((obj) => fabricRef.current!.remove(obj));
@@ -1132,7 +1049,7 @@ export default function DesignCanvas({
           if (!fabricRef.current) return;
           const fb = fabricLib;
           const objects = fabricRef.current.getObjects().filter(
-            (o: any) => !(o as any)._isArtboard && !(o as any)._isBgImage && o.selectable !== false
+            (o: any) => !(o as any)._isBgImage && o.selectable !== false
           );
           if (objects.length > 0) {
             const selection = new fb.ActiveSelection(objects, { canvas: fabricRef.current });
@@ -1143,12 +1060,10 @@ export default function DesignCanvas({
 
         clearCanvas: async () => {
           if (!fabricRef.current) return;
-          const objs = fabricRef.current.getObjects().filter((o: any) => !(o as any)._isArtboard);
-          objs.forEach((o) => fabricRef.current!.remove(o));
+          fabricRef.current.getObjects().slice().forEach((o) => fabricRef.current!.remove(o));
           fabricRef.current.backgroundImage = undefined as any;
-          if (artboardRef.current) (artboardRef.current as any).set("fill", "#ffffff");
           fabricRef.current.discardActiveObject();
-          fabricRef.current.backgroundColor = "transparent";
+          fabricRef.current.backgroundColor = "#ffffff";
           fabricRef.current.renderAll();
           saveToHistory();
           onCanvasModified?.();
@@ -1361,33 +1276,18 @@ export default function DesignCanvas({
           const fb = fabricLib;
 
           if (active.type === "activeSelection") {
-            const sel = active as any;
-            const selTransform = sel.calcTransformMatrix();
-            const objects = sel.getObjects() as FabricObject[];
-            const addedClones: FabricObject[] = [];
-
-            for (const obj of objects) {
-              const cloned = await obj.clone();
-              // Object coords inside ActiveSelection are relative to the group.
-              // Multiply by the group's transform matrix to get absolute canvas coords.
-              const objTransform = obj.calcTransformMatrix();
-              const absLeft = objTransform[4];
-              const absTop = objTransform[5];
-              cloned.set({
-                left: absLeft + 20,
-                top: absTop + 20,
-              });
-              cloned.setCoords();
-              canvas.add(cloned);
-              addedClones.push(cloned);
-            }
-
+            const cloned = await active.clone();
             canvas.discardActiveObject();
-
-            if (addedClones.length > 0) {
-              const newSel = new fb.ActiveSelection(addedClones, { canvas });
-              canvas.setActiveObject(newSel);
-            }
+            cloned.set({
+              left: (cloned.left || 0) + 20,
+              top: (cloned.top || 0) + 20,
+            });
+            cloned.canvas = canvas;
+            (cloned as any).forEachObject((obj: FabricObject) => {
+              canvas.add(obj);
+            });
+            cloned.setCoords();
+            canvas.setActiveObject(cloned);
           } else {
             const cloned = await active.clone();
             cloned.set({ left: (active.left || 0) + 20, top: (active.top || 0) + 20 });
@@ -1647,9 +1547,7 @@ export default function DesignCanvas({
   useEffect(() => {
     designWidthRef.current = width;
     designHeightRef.current = height;
-    if (artboardRef.current && fabricRef.current) {
-      (artboardRef.current as any).set({ width, height });
-      artboardRef.current.setCoords();
+    if (fabricRef.current) {
       centerArtboard(fabricRef.current, width, height);
       scheduleCenteringBurst(fabricRef.current, width, height);
     }

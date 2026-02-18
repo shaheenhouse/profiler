@@ -65,50 +65,19 @@ async function createExportCanvas(
 ) {
   const fabric = await import("fabric");
 
-  // Serialize with custom flags so we can remove non-export objects (artboard, helpers).
-  const jsonData = (mainCanvas as any).toJSON(["_isArtboard", "excludeFromExport"]);
+  const jsonData = (mainCanvas as any).toJSON();
+  const bgColor = (mainCanvas as any).backgroundColor || "#ffffff";
 
-  let detectedArtboardFill: string | null = null;
-  const objects = Array.isArray(jsonData.objects) ? jsonData.objects : [];
-  jsonData.objects = objects.filter((obj: any) => {
-    if (!obj) return false;
+  jsonData.width = canvasWidth;
+  jsonData.height = canvasHeight;
+  jsonData.background = bgOverride ?? bgColor;
 
-    const isArtboardByFlag = obj._isArtboard === true;
-    const isArtboardByShape =
-      obj.type === "rect" &&
-      obj.left === 0 &&
-      obj.top === 0 &&
-      obj.width === canvasWidth &&
-      obj.height === canvasHeight &&
-      obj.selectable === false &&
-      obj.evented === false;
-
-    const isArtboard = isArtboardByFlag || isArtboardByShape;
-    if (isArtboard) {
-      if (typeof obj.fill === "string" && obj.fill) {
-        detectedArtboardFill = obj.fill;
-      }
-      return false;
-    }
-
-    // Respect explicit export opt-out.
-    return obj.excludeFromExport !== true;
-  });
-
-  // Create an off-screen StaticCanvas with the exact design dimensions
   const tempEl = document.createElement("canvas");
   const tempCanvas = new fabric.StaticCanvas(tempEl, {
     width: canvasWidth,
     height: canvasHeight,
   });
-
-  // Use detected artboard fill as export background (unless caller overrides it).
-  if (detectedArtboardFill) {
-    tempCanvas.backgroundColor = detectedArtboardFill;
-  }
-  if (bgOverride !== undefined && bgOverride !== null) {
-    tempCanvas.backgroundColor = bgOverride;
-  }
+  tempCanvas.backgroundColor = bgOverride ?? bgColor;
 
   // Load the full design into the temp canvas
   await tempCanvas.loadFromJSON(jsonData);

@@ -213,6 +213,27 @@ export default function DesignCanvas({
         // Some versions may not support all properties
       }
 
+      // Re-apply Fabric's built-in cursor handlers on all default controls
+      // to guarantee correct diagonal / h / v resize cursors.
+      try {
+        const controls = (fabric.FabricObject.prototype as any).controls;
+        if (controls) {
+          const { scaleCursorStyleHandler, scaleSkewCursorStyleHandler } = fabric.controlsUtils;
+          if (scaleCursorStyleHandler) {
+            for (const k of ['tl', 'tr', 'bl', 'br']) {
+              if (controls[k]) controls[k].cursorStyleHandler = scaleCursorStyleHandler;
+            }
+          }
+          if (scaleSkewCursorStyleHandler) {
+            for (const k of ['ml', 'mr', 'mt', 'mb']) {
+              if (controls[k]) controls[k].cursorStyleHandler = scaleSkewCursorStyleHandler;
+            }
+          }
+        }
+      } catch {
+        // Cursor handlers are a nice-to-have
+      }
+
       // ResizeObserver to recenter when container changes
       // (e.g. when left toolbar panel expands/collapses)
       let resizeRAF: number | null = null;
@@ -1155,13 +1176,20 @@ export default function DesignCanvas({
               scaleX: scale, scaleY: scale,
             });
             if (options?.fill) {
-              if (obj.type === "group") {
-                (obj as any).getObjects().forEach((child: any) => {
-                  if (child.stroke) child.set("stroke", options.fill);
-                  if (child.fill && child.fill !== "none" && child.fill !== "") {
-                    child.set("fill", options.fill);
+              const colorDeep = (o: any, c: string) => {
+                const kids = o.getObjects ? o.getObjects() : [];
+                for (const child of kids) {
+                  if (child.type === "group") { colorDeep(child, c); }
+                  else {
+                    if (child.fill != null && child.fill !== "none" && child.fill !== "") child.set("fill", c);
+                    if (child.stroke) child.set("stroke", c);
                   }
-                });
+                  child.dirty = true;
+                }
+                o.dirty = true;
+              };
+              if (obj.type === "group") {
+                colorDeep(obj, options.fill);
               } else {
                 if ((obj as any).stroke) obj.set("stroke" as any, options.fill);
                 if ((obj as any).fill && (obj as any).fill !== "none") {

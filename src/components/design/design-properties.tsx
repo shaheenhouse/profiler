@@ -133,22 +133,45 @@ export function DesignProperties({ selectedObject, canvasRef }: DesignProperties
     if (!selectedObject) return;
     const shadow = (selectedObject as any).shadow;
 
-    // For groups (SVG icons), read fill from the first visible child
+    // For groups / multi-selection / SVG icons, read fill from the first
+    // visible leaf child, recursing into nested groups.
     let effectiveFill = (selectedObject.fill as string) || "#000000";
-    if (selectedObject.type === "group") {
-      const group = selectedObject as any;
-      const children = group.getObjects ? group.getObjects() : [];
-      for (const child of children) {
-        if (child.fill && child.fill !== "none" && child.fill !== "") {
-          effectiveFill = child.fill;
-          break;
+    const findLeafFill = (obj: any): string | null => {
+      const kids = obj.getObjects ? obj.getObjects() : [];
+      for (const child of kids) {
+        if (child.type === "group" || (child.getObjects && child.getObjects().length > 0)) {
+          const f = findLeafFill(child);
+          if (f) return f;
+        } else if (child.fill && child.fill !== "none" && child.fill !== "") {
+          return child.fill;
         }
       }
+      return null;
+    };
+    if (selectedObject.type === "group" || selectedObject.type === "activeselection" || selectedObject.type === "activeSelection") {
+      effectiveFill = findLeafFill(selectedObject) || effectiveFill;
+    }
+
+    let effectiveStroke = (selectedObject.stroke as string) || "";
+    if (selectedObject.type === "group" || selectedObject.type === "activeselection" || selectedObject.type === "activeSelection") {
+      const findLeafStroke = (obj: any): string | null => {
+        const kids = obj.getObjects ? obj.getObjects() : [];
+        for (const child of kids) {
+          if (child.type === "group" || (child.getObjects && child.getObjects().length > 0)) {
+            const s = findLeafStroke(child);
+            if (s) return s;
+          } else if (child.stroke && child.stroke !== "none") {
+            return child.stroke;
+          }
+        }
+        return null;
+      };
+      effectiveStroke = findLeafStroke(selectedObject) || effectiveStroke;
     }
 
     setProps({
       fill: effectiveFill,
-      stroke: (selectedObject.stroke as string) || "",
+      stroke: effectiveStroke,
       strokeWidth: selectedObject.strokeWidth || 0,
       opacity: Math.round((selectedObject.opacity || 1) * 100),
       fontSize: (selectedObject as any).fontSize || 36,
@@ -207,25 +230,63 @@ export function DesignProperties({ selectedObject, canvasRef }: DesignProperties
 
   const applyProp = (key: string, value: unknown) => {
     if (!selectedObject) return;
-    selectedObject.set(key as keyof FabricObject, value as any);
 
-    // For groups (e.g. SVG icons), propagate fill/stroke to child objects
-    if ((key === "fill" || key === "stroke") && selectedObject.type === "group") {
-      const group = selectedObject as any;
-      const children = group.getObjects ? group.getObjects() : [];
-      for (const child of children) {
-        if (key === "fill") {
-          if (child.fill && child.fill !== "none" && child.fill !== "") {
-            child.set("fill", value);
-          }
+    const isColorKey = key === "fill" || key === "stroke";
+    const isMulti = selectedObject.type === "activeselection" || selectedObject.type === "activeSelection";
+    const isGroup = selectedObject.type === "group";
+
+    // Recursively apply fill or stroke to every leaf object inside
+    // groups and nested SVG structures.
+    const setColorDeep = (obj: any, k: string, v: unknown) => {
+      const kids = obj.getObjects ? obj.getObjects() : [];
+      if (kids.length > 0) {
+        for (const child of kids) {
+          setColorDeep(child, k, v);
         }
-        if (key === "stroke") {
-          if (child.stroke) {
-            child.set("stroke", value);
+        obj.dirty = true;
+      } else {
+        // Leaf object – apply fill or stroke
+        if (k === "fill") {
+          const cur = obj.fill;
+          if (cur !== "none") {
+            obj.set("fill", v);
           }
+        } else if (k === "stroke") {
+          obj.set("stroke", v);
         }
+        obj.dirty = true;
       }
-      group.dirty = true;
+    };
+
+    // Helper to apply a property recursively to every leaf in a tree
+    const setPropDeep = (obj: any, k: string, v: unknown) => {
+      const kids = obj.getObjects ? obj.getObjects() : [];
+      if (kids.length > 0) {
+        for (const child of kids) setPropDeep(child, k, v);
+        obj.dirty = true;
+      } else {
+        obj.set(k, v);
+        obj.dirty = true;
+      }
+    };
+
+    if (isColorKey && (isGroup || isMulti)) {
+      const items = (selectedObject as any).getObjects ? (selectedObject as any).getObjects() : [];
+      for (const item of items) {
+        setColorDeep(item, key, value);
+      }
+      (selectedObject as any).dirty = true;
+    } else if (isColorKey && selectedObject.type === "path") {
+      if (key === "fill") {
+        const cur = (selectedObject as any).fill;
+        if (cur !== "none") selectedObject.set("fill" as any, value as any);
+      } else {
+        selectedObject.set("stroke" as any, value as any);
+      }
+    } else if (key === "strokeWidth" && (isGroup || isMulti)) {
+      setPropDeep(selectedObject, key, value);
+    } else {
+      selectedObject.set(key as keyof FabricObject, value as any);
     }
 
     const canvas = canvasRef.current?.getCanvas();

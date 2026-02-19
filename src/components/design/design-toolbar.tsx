@@ -326,14 +326,23 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
     if (!canvas) return;
     const active = canvas.getActiveObject() as any;
     if (active) {
-      if (active.type === "group" && active.getObjects) {
-        active.getObjects().forEach((child: any) => {
-          if (child.fill && child.fill !== "none") child.set("fill", color);
-          if (child.stroke) child.set("stroke", color);
-        });
+      const setDeep = (obj: any, c: string) => {
+        const kids = obj.getObjects ? obj.getObjects() : [];
+        if (kids.length > 0) {
+          for (const child of kids) setDeep(child, c);
+          obj.dirty = true;
+        } else {
+          if (obj.fill != null && obj.fill !== "none") obj.set("fill", c);
+          obj.set("stroke", c);
+          obj.dirty = true;
+        }
+      };
+      const t = active.type;
+      if (t === "group" || t === "activeselection" || t === "activeSelection") {
+        setDeep(active, color);
       } else {
         if (active.fill !== undefined) active.set("fill", color);
-        if (active.stroke) active.set("stroke", color);
+        active.set("stroke", color);
       }
       canvas.renderAll();
       return;
@@ -652,13 +661,23 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
       left: (active.left || 0) + 40,
       top: (active.top || 0) + 40,
     });
-    if ((clone as any).fill) (clone as any).set("fill", accent);
-    if ((clone as any).stroke) (clone as any).set("stroke", accent);
+    const colorDeep = (obj: any, c: string) => {
+      const kids = obj.getObjects ? obj.getObjects() : [];
+      for (const child of kids) {
+        if (child.type === "group") { colorDeep(child, c); }
+        else {
+          if (child.fill != null && child.fill !== "none" && child.fill !== "") child.set("fill", c);
+          if (child.stroke) child.set("stroke", c);
+        }
+        child.dirty = true;
+      }
+      obj.dirty = true;
+    };
     if ((clone as any).type === "group" && (clone as any).getObjects) {
-      (clone as any).getObjects().forEach((child: any) => {
-        if (child.fill && child.fill !== "none") child.set("fill", accent);
-        if (child.stroke) child.set("stroke", accent);
-      });
+      colorDeep(clone, accent);
+    } else {
+      if ((clone as any).fill) (clone as any).set("fill", accent);
+      if ((clone as any).stroke) (clone as any).set("stroke", accent);
     }
     canvas.add(clone);
     canvas.setActiveObject(clone);

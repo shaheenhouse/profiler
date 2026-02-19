@@ -86,7 +86,8 @@ export function DesignContextMenu({
 
   const hasObject = !!selectedObject;
   const isGroup = selectedObject?.type === "group";
-  const isMultiSelect = selectedObject?.type === "activeselection";
+  const isMultiSelect =
+    selectedObject?.type === "activeselection" || selectedObject?.type === "activeSelection";
   const isLocked = (selectedObject as any)?.lockMovementX || false;
 
   const exec = (action: () => void) => {

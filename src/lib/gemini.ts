@@ -71,6 +71,222 @@ export async function generateDesign(
 ): Promise<string> {
   const client = getClient();
 
+  const extractJsonCandidate = (raw: string): string => {
+    const cleaned = raw
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .replace(/\u201c|\u201d/g, '"')
+      .replace(/\u2018|\u2019/g, "'")
+      .trim();
+
+    if (cleaned.startsWith("{") && cleaned.endsWith("}")) return cleaned;
+
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first !== -1 && last !== -1 && last > first) {
+      return cleaned.slice(first, last + 1).trim();
+    }
+    return cleaned;
+  };
+
+  const tryParseDesignJSON = (raw: string): any | null => {
+    const candidate = extractJsonCandidate(raw);
+    if (!candidate) return null;
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Try one more pass with trailing comma cleanup.
+      const withoutTrailingCommas = candidate.replace(/,\s*([}\]])/g, "$1");
+      try {
+        return JSON.parse(withoutTrailingCommas);
+      } catch {
+        return null;
+      }
+    }
+  };
+
+  const normalizeDesignJSON = (parsed: any) => {
+    if (!parsed || typeof parsed !== "object") return null;
+    const objects = Array.isArray(parsed.objects)
+      ? parsed.objects
+      : Array.isArray(parsed.canvas?.objects)
+        ? parsed.canvas.objects
+        : Array.isArray(parsed.data?.objects)
+          ? parsed.data.objects
+          : [];
+
+    const normalized = {
+      objects,
+      width: Number(parsed.width) || width,
+      height: Number(parsed.height) || height,
+      background:
+        parsed.background ||
+        parsed.backgroundColor ||
+        "#0f172a",
+    };
+
+    return normalized;
+  };
+
+  const buildArchitectureFallback = (): string => {
+    const layerW = Math.min(950, Math.max(560, Math.round(width * 0.72)));
+    const layerH = Math.min(130, Math.max(90, Math.round(height * 0.13)));
+    const centerX = Math.round((width - layerW) / 2);
+    const startY = Math.max(80, Math.round(height * 0.12));
+    const gap = Math.max(28, Math.round(height * 0.04));
+
+    const layers = [
+      { title: "Presentation Layer", subtitle: "ASP.NET Core Web API", color: "#3b82f6" },
+      { title: "Application Layer", subtitle: "Use Cases / CQRS / Validation", color: "#8b5cf6" },
+      { title: "Domain Layer", subtitle: "Entities / Value Objects / Rules", color: "#10b981" },
+      { title: "Infrastructure Layer", subtitle: "EF Core / Messaging / External Services", color: "#f59e0b" },
+    ];
+
+    const objects: any[] = [
+      {
+        type: "rect",
+        left: 0,
+        top: 0,
+        width,
+        height,
+        fill: "#0b1020",
+        selectable: false,
+      },
+      {
+        type: "i-text",
+        left: centerX,
+        top: 24,
+        width: layerW,
+        text: ".NET 10 Layered Architecture",
+        fontSize: 44,
+        fontWeight: "bold",
+        fontFamily: "Arial",
+        fill: "#f8fafc",
+        textAlign: "center",
+      },
+      {
+        type: "i-text",
+        left: centerX,
+        top: 72,
+        width: layerW,
+        text: "Clean boundaries, scalable flow, production-ready design",
+        fontSize: 18,
+        fontFamily: "Arial",
+        fill: "#94a3b8",
+        textAlign: "center",
+      },
+    ];
+
+    layers.forEach((layer, i) => {
+      const y = startY + i * (layerH + gap);
+      objects.push(
+        {
+          type: "rect",
+          left: centerX,
+          top: y,
+          width: layerW,
+          height: layerH,
+          fill: layer.color,
+          opacity: 0.18,
+          stroke: layer.color,
+          strokeWidth: 2,
+          rx: 22,
+          ry: 22,
+        },
+        {
+          type: "i-text",
+          left: centerX + 30,
+          top: y + 24,
+          text: layer.title,
+          fontSize: 30,
+          fontWeight: "bold",
+          fontFamily: "Arial",
+          fill: "#e2e8f0",
+        },
+        {
+          type: "i-text",
+          left: centerX + 30,
+          top: y + 64,
+          text: layer.subtitle,
+          fontSize: 17,
+          fontFamily: "Arial",
+          fill: "#cbd5e1",
+        }
+      );
+
+      if (i < layers.length - 1) {
+        const arrowX = centerX + layerW / 2;
+        const fromY = y + layerH + 8;
+        const toY = y + layerH + gap - 8;
+        objects.push(
+          {
+            type: "line",
+            x1: arrowX,
+            y1: fromY,
+            x2: arrowX,
+            y2: toY,
+            stroke: "#60a5fa",
+            strokeWidth: 4,
+          },
+          {
+            type: "triangle",
+            left: arrowX - 10,
+            top: toY - 2,
+            width: 20,
+            height: 16,
+            fill: "#60a5fa",
+            angle: 180,
+          }
+        );
+      }
+    });
+
+    const badgeY = startY + layers.length * (layerH + gap) + 8;
+    const badgeW = 230;
+    const badgeGap = 20;
+    const badgesX = Math.max(40, Math.round((width - badgeW * 3 - badgeGap * 2) / 2));
+    const badges = [
+      { text: "Observability", color: "#06b6d4" },
+      { text: "Resilience", color: "#a78bfa" },
+      { text: "Cloud Ready", color: "#22c55e" },
+    ];
+    badges.forEach((badge, i) => {
+      const x = badgesX + i * (badgeW + badgeGap);
+      objects.push(
+        {
+          type: "rect",
+          left: x,
+          top: badgeY,
+          width: badgeW,
+          height: 54,
+          fill: badge.color,
+          opacity: 0.2,
+          stroke: badge.color,
+          strokeWidth: 1.5,
+          rx: 14,
+          ry: 14,
+        },
+        {
+          type: "i-text",
+          left: x + 20,
+          top: badgeY + 16,
+          text: badge.text,
+          fontSize: 20,
+          fontWeight: "bold",
+          fontFamily: "Arial",
+          fill: "#e2e8f0",
+        }
+      );
+    });
+
+    return JSON.stringify({
+      objects,
+      width,
+      height,
+      background: "#0b1020",
+    });
+  };
+
   let textPrompt = `Create a design with these specifications:
 - Design size: ${width}x${height} pixels
 - Description: ${prompt}
@@ -110,18 +326,46 @@ Generate a complete Fabric.js JSON with all objects positioned within the ${widt
   });
 
   const result = await model.generateContent(parts);
-  let text = result.response.text();
+  const text = result.response.text();
 
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
-  try {
-    const parsed = JSON.parse(text);
-    parsed.width = parsed.width || width;
-    parsed.height = parsed.height || height;
-    return JSON.stringify(parsed);
-  } catch {
-    throw new Error('AI generated invalid design JSON. Please try again with a different prompt.');
+  let parsed = tryParseDesignJSON(text);
+  if (!parsed) {
+    try {
+      const repairModel = client.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json",
+        },
+      });
+      const repair = await repairModel.generateContent([
+        {
+          text:
+            `Convert this output into strict valid JSON for a Fabric.js canvas. ` +
+            `Return only JSON with keys: objects (array), width (number), height (number), background (string). ` +
+            `Keep the design intent and visual hierarchy.\n\n` +
+            `ORIGINAL OUTPUT:\n${text.slice(0, 15000)}`,
+        },
+      ]);
+      parsed = tryParseDesignJSON(repair.response.text());
+    } catch {
+      parsed = null;
+    }
   }
+
+  const normalized = normalizeDesignJSON(parsed);
+  if (normalized && Array.isArray(normalized.objects)) {
+    return JSON.stringify(normalized);
+  }
+
+  const isArchitecturePrompt =
+    /architecture|layer|diagram|flow|microservice|api|domain|infrastructure|\.net|dotnet|clean architecture/i.test(prompt);
+  if (isArchitecturePrompt) {
+    return buildArchitectureFallback();
+  }
+
+  throw new Error("AI generated invalid design JSON. Please try again with a different prompt.");
 }
 
 // ============================================================

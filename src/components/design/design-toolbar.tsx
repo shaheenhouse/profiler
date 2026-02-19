@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,9 +63,10 @@ import {
   ImagePlus,
   Send,
   X,
+  WandSparkles,
 } from "lucide-react";
 import type { DesignCanvasAPI } from "./design-canvas";
-import type { ToolType } from "@/types/design";
+import { DESIGN_SIZES, type ToolType } from "@/types/design";
 
 interface DesignToolbarProps {
   canvasRef: React.RefObject<DesignCanvasAPI | null>;
@@ -74,6 +75,7 @@ interface DesignToolbarProps {
   onOpenTemplates: () => void;
   designWidth?: number;
   designHeight?: number;
+  onMagicResize?: (width: number, height: number) => void;
 }
 
 const PRESET_COLORS = [
@@ -168,7 +170,7 @@ interface StockPhoto {
   height: number;
 }
 
-export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTemplates, designWidth = 1080, designHeight = 1080 }: DesignToolbarProps) {
+export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTemplates, designWidth = 1080, designHeight = 1080, onMagicResize }: DesignToolbarProps) {
   const [bgColor, setBgColor] = useState("#ffffff");
   const [drawColor, setDrawColor] = useState("#333333");
   const [drawWidth, setDrawWidth] = useState(3);
@@ -201,6 +203,82 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
 
   // Layers state
   const [layerObjects, setLayerObjects] = useState<any[]>([]);
+  const [layoutGap, setLayoutGap] = useState(24);
+  const [magicWritePrompt, setMagicWritePrompt] = useState("");
+  const [magicWriteTone, setMagicWriteTone] = useState<"professional" | "bold" | "friendly">("professional");
+  const [magicWriteOptions, setMagicWriteOptions] = useState<string[]>([]);
+  const [harmonyBase, setHarmonyBase] = useState("#6366f1");
+  const [brandName, setBrandName] = useState("My Brand");
+  const [brandFonts, setBrandFonts] = useState("Inter, Poppins");
+  const [brandColors, setBrandColors] = useState<string[]>(["#6366f1", "#ec4899", "#0ea5e9", "#111827"]);
+  const [brandLogo, setBrandLogo] = useState<string>("");
+  const brandLogoInputRef = useRef<HTMLInputElement>(null);
+
+  const generatePalette = useMemo(() => {
+    const hexToRgb = (hex: string) => {
+      const clean = hex.replace("#", "");
+      if (clean.length !== 6) return { r: 99, g: 102, b: 241 };
+      return {
+        r: parseInt(clean.slice(0, 2), 16),
+        g: parseInt(clean.slice(2, 4), 16),
+        b: parseInt(clean.slice(4, 6), 16),
+      };
+    };
+    const rgbToHex = (r: number, g: number, b: number) =>
+      `#${[r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")}`;
+    const rgbToHsl = (r: number, g: number, b: number) => {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h = 0, s = 0;
+      const l = (max + min) / 2;
+      const d = max - min;
+      if (d !== 0) {
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          default: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return { h, s, l };
+    };
+    const hslToRgb = (h: number, s: number, l: number) => {
+      if (s === 0) {
+        const v = l * 255;
+        return { r: v, g: v, b: v };
+      }
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      return {
+        r: hue2rgb(p, q, h + 1 / 3) * 255,
+        g: hue2rgb(p, q, h) * 255,
+        b: hue2rgb(p, q, h - 1 / 3) * 255,
+      };
+    };
+    return (baseHex: string) => {
+      const rgb = hexToRgb(baseHex);
+      const { h, s, l } = rgbToHsl(rgb.r, rgb.g, rgb.b);
+      const variants = [
+        { h, s, l: Math.max(0.18, l - 0.25) },
+        { h, s, l: Math.min(0.85, l + 0.2) },
+        { h: (h + 0.08) % 1, s: Math.min(1, s + 0.05), l },
+        { h: (h + 0.5) % 1, s: Math.max(0.2, s - 0.1), l: Math.max(0.2, l - 0.08) },
+      ];
+      return [baseHex, ...variants.map((v) => {
+        const out = hslToRgb(v.h, v.s, v.l);
+        return rgbToHex(out.r, out.g, out.b);
+      })];
+    };
+  }, []);
 
   // Refresh layers list
   const refreshLayers = useCallback(() => {
@@ -218,6 +296,86 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
     }));
     setLayerObjects(objects.reverse()); // Top layer first
   }, [canvasRef]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("design:brand-kit:v1");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.name) setBrandName(parsed.name);
+      if (Array.isArray(parsed?.colors) && parsed.colors.length) setBrandColors(parsed.colors.slice(0, 6));
+      if (parsed?.fonts) setBrandFonts(parsed.fonts);
+      if (parsed?.logo) setBrandLogo(parsed.logo);
+    } catch {
+      // ignore invalid local storage
+    }
+  }, []);
+
+  const saveBrandKit = useCallback(() => {
+    const payload = {
+      name: brandName.trim() || "My Brand",
+      colors: brandColors,
+      fonts: brandFonts,
+      logo: brandLogo,
+    };
+    localStorage.setItem("design:brand-kit:v1", JSON.stringify(payload));
+  }, [brandName, brandColors, brandFonts, brandLogo]);
+
+  const applyBrandColor = useCallback((color: string) => {
+    const canvas = canvasRef.current?.getCanvas();
+    if (!canvas) return;
+    const active = canvas.getActiveObject() as any;
+    if (active) {
+      if (active.type === "group" && active.getObjects) {
+        active.getObjects().forEach((child: any) => {
+          if (child.fill && child.fill !== "none") child.set("fill", color);
+          if (child.stroke) child.set("stroke", color);
+        });
+      } else {
+        if (active.fill !== undefined) active.set("fill", color);
+        if (active.stroke) active.set("stroke", color);
+      }
+      canvas.renderAll();
+      return;
+    }
+    canvasRef.current?.setBackgroundColor(color);
+  }, [canvasRef]);
+
+  const applyBrandFont = useCallback((font: string) => {
+    const canvas = canvasRef.current?.getCanvas();
+    if (!canvas) return;
+    const active = canvas.getActiveObject() as any;
+    if (active && (active.type === "i-text" || active.type === "text" || active.type === "textbox")) {
+      active.set("fontFamily", font);
+      canvas.renderAll();
+      return;
+    }
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj.type === "i-text" || obj.type === "text" || obj.type === "textbox") {
+        obj.set("fontFamily", font);
+      }
+    });
+    canvas.renderAll();
+  }, [canvasRef]);
+
+  const handleBrandLogoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.url) {
+        setBrandLogo(data.url);
+      }
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => setBrandLogo(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+    e.target.value = "";
+  }, []);
 
   // Load stock photos
   const loadStockPhotos = useCallback(async (page: number) => {
@@ -382,6 +540,131 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
     }
   };
 
+  const autoLayout = useCallback((mode: "row" | "column" | "grid") => {
+    const canvas = canvasRef.current?.getCanvas();
+    if (!canvas) return;
+    const active = canvas.getActiveObject() as any;
+    const isActiveSelection = active?.type === "activeselection" || active?.type === "activeSelection";
+    const items = isActiveSelection
+      ? active.getObjects()
+      : canvas.getObjects().filter((obj: any) => !obj._isBgImage);
+    if (!items || items.length < 2) return;
+
+    const gap = layoutGap;
+    const sorted = [...items].sort((a: any, b: any) => (a.top || 0) - (b.top || 0));
+    const startX = Math.min(...sorted.map((o: any) => o.left || 0));
+    const startY = Math.min(...sorted.map((o: any) => o.top || 0));
+
+    if (mode === "row") {
+      let x = startX;
+      sorted.forEach((obj: any) => {
+        const w = (obj.width || 0) * (obj.scaleX || 1);
+        obj.set({ left: x, top: startY });
+        x += w + gap;
+        obj.setCoords?.();
+      });
+    } else if (mode === "column") {
+      let y = startY;
+      sorted.forEach((obj: any) => {
+        const h = (obj.height || 0) * (obj.scaleY || 1);
+        obj.set({ left: startX, top: y });
+        y += h + gap;
+        obj.setCoords?.();
+      });
+    } else {
+      const cols = Math.ceil(Math.sqrt(sorted.length));
+      let maxW = 120;
+      let maxH = 120;
+      sorted.forEach((obj: any) => {
+        maxW = Math.max(maxW, (obj.width || 0) * (obj.scaleX || 1));
+        maxH = Math.max(maxH, (obj.height || 0) * (obj.scaleY || 1));
+      });
+      sorted.forEach((obj: any, idx: number) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        obj.set({
+          left: startX + col * (maxW + gap),
+          top: startY + row * (maxH + gap),
+        });
+        obj.setCoords?.();
+      });
+    }
+    canvas.renderAll();
+    refreshLayers();
+  }, [canvasRef, layoutGap, refreshLayers]);
+
+  const runLayoutAssistant = useCallback(() => {
+    const canvas = canvasRef.current?.getCanvas();
+    if (!canvas) return;
+    const objects = canvas.getObjects().filter((obj: any) => !obj._isBgImage);
+    if (objects.length < 2) {
+      setAiError("Add at least two objects for layout suggestions.");
+      return;
+    }
+    const offCanvas = objects.filter((obj: any) => {
+      const left = obj.left || 0;
+      const top = obj.top || 0;
+      const w = (obj.width || 0) * (obj.scaleX || 1);
+      const h = (obj.height || 0) * (obj.scaleY || 1);
+      return left < 0 || top < 0 || left + w > designWidth || top + h > designHeight;
+    }).length;
+    const advice: string[] = [];
+    if (offCanvas > 0) advice.push(`${offCanvas} objects are outside the canvas bounds.`);
+    if (objects.length > 12) advice.push("Design is dense. Try grouping related elements.");
+    if (objects.length >= 3) advice.push("Use auto layout row/column/grid for cleaner spacing.");
+    if (advice.length === 0) advice.push("Layout looks balanced. Try generating a color variation.");
+    setAiError(advice.join(" "));
+  }, [canvasRef, designWidth, designHeight]);
+
+  const generateMagicWrite = useCallback(() => {
+    if (!magicWritePrompt.trim()) return;
+    const base = magicWritePrompt.trim();
+    const options =
+      magicWriteTone === "bold"
+        ? [
+            `${base.toUpperCase()} - MAKE IT UNMISSABLE`,
+            `${base}: The next big thing starts here`,
+            `Stop scrolling. ${base}.`,
+          ]
+        : magicWriteTone === "friendly"
+          ? [
+              `${base} made simple and fun`,
+              `Let's make ${base} together`,
+              `${base} for everyone`,
+            ]
+          : [
+              `${base} for modern teams`,
+              `${base}: professional results, faster`,
+              `Achieve better outcomes with ${base}`,
+            ];
+    setMagicWriteOptions(options);
+  }, [magicWritePrompt, magicWriteTone]);
+
+  const applyVariation = useCallback(async () => {
+    const canvas = canvasRef.current?.getCanvas();
+    if (!canvas) return;
+    const active = canvas.getActiveObject() as any;
+    if (!active) return;
+    const clone = await active.clone();
+    const palette = generatePalette(harmonyBase);
+    const accent = palette[Math.floor(Math.random() * palette.length)];
+    clone.set({
+      left: (active.left || 0) + 40,
+      top: (active.top || 0) + 40,
+    });
+    if ((clone as any).fill) (clone as any).set("fill", accent);
+    if ((clone as any).stroke) (clone as any).set("stroke", accent);
+    if ((clone as any).type === "group" && (clone as any).getObjects) {
+      (clone as any).getObjects().forEach((child: any) => {
+        if (child.fill && child.fill !== "none") child.set("fill", accent);
+        if (child.stroke) child.set("stroke", accent);
+      });
+    }
+    canvas.add(clone);
+    canvas.setActiveObject(clone);
+    canvas.renderAll();
+  }, [canvasRef, generatePalette, harmonyBase]);
+
   // AI Design generation handler
   const handleAiGenerate = async () => {
     if (!aiPrompt.trim()) return;
@@ -484,6 +767,42 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
                     <p className="text-xs text-muted-foreground">{combo.heading} + {combo.body}</p>
                   </div>
                 </Button>
+              ))}
+            </div>
+            <Separator />
+            <h4 className="font-semibold text-sm">Magic Write</h4>
+            <div className="space-y-2">
+              <Input
+                value={magicWritePrompt}
+                onChange={(e) => setMagicWritePrompt(e.target.value)}
+                placeholder="Topic or message..."
+                className="text-xs"
+              />
+              <div className="flex gap-1">
+                {(["professional", "bold", "friendly"] as const).map((tone) => (
+                  <Button
+                    key={tone}
+                    size="sm"
+                    variant={magicWriteTone === tone ? "default" : "outline"}
+                    className="text-[10px] h-7 flex-1 capitalize"
+                    onClick={() => setMagicWriteTone(tone)}
+                  >
+                    {tone}
+                  </Button>
+                ))}
+              </div>
+              <Button size="sm" className="w-full gap-1" onClick={generateMagicWrite} disabled={!magicWritePrompt.trim()}>
+                <WandSparkles className="w-3.5 h-3.5" />
+                Generate Copy
+              </Button>
+              {magicWriteOptions.map((line) => (
+                <button
+                  key={line}
+                  className="w-full text-left text-xs px-2 py-1.5 rounded border hover:bg-accent"
+                  onClick={() => canvasRef.current?.addText(line, { fontSize: 28, width: 620 })}
+                >
+                  {line}
+                </button>
               ))}
             </div>
           </div>
@@ -1017,6 +1336,80 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
                 Upload Background
               </Button>
             </div>
+            <Separator />
+            <div className="space-y-2">
+              <h4 className="font-semibold text-sm">AI Color Harmony</h4>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={harmonyBase}
+                  onChange={(e) => setHarmonyBase(e.target.value)}
+                  className="w-9 h-9 rounded cursor-pointer"
+                />
+                <Input value={harmonyBase} onChange={(e) => setHarmonyBase(e.target.value)} className="text-xs uppercase" />
+              </div>
+              <div className="grid grid-cols-5 gap-1">
+                {generatePalette(harmonyBase).map((color) => (
+                  <button
+                    key={color}
+                    className="h-8 rounded border border-white/20"
+                    style={{ backgroundColor: color }}
+                    onClick={() => applyBrandColor(color)}
+                    title="Apply to selected object"
+                  />
+                ))}
+              </div>
+            </div>
+            <Separator />
+            <div className="space-y-2">
+              <h4 className="font-semibold text-sm">Brand Kit</h4>
+              <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="Brand name" className="text-xs" />
+              <Input value={brandFonts} onChange={(e) => setBrandFonts(e.target.value)} placeholder="Fonts (comma separated)" className="text-xs" />
+              <div className="grid grid-cols-4 gap-1">
+                {brandColors.map((c) => (
+                  <button
+                    key={c}
+                    className="h-8 rounded border border-white/20"
+                    style={{ backgroundColor: c }}
+                    onClick={() => applyBrandColor(c)}
+                    title="Apply brand color"
+                  />
+                ))}
+              </div>
+              <div className="flex gap-1">
+                {brandFonts.split(",").map((f) => (
+                  <Button
+                    key={f.trim()}
+                    size="sm"
+                    variant="outline"
+                    className="text-[10px] h-7 flex-1 truncate"
+                    onClick={() => applyBrandFont(f.trim())}
+                  >
+                    {f.trim()}
+                  </Button>
+                ))}
+              </div>
+              <input
+                ref={brandLogoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleBrandLogoUpload}
+              />
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => brandLogoInputRef.current?.click()}>
+                  Upload Logo
+                </Button>
+                <Button size="sm" className="flex-1 text-xs" onClick={saveBrandKit}>
+                  Save Kit
+                </Button>
+              </div>
+              {brandLogo && (
+                <Button size="sm" variant="outline" className="w-full text-xs" onClick={() => canvasRef.current?.addImage(brandLogo)}>
+                  Add Brand Logo
+                </Button>
+              )}
+            </div>
           </div>
         );
 
@@ -1063,6 +1456,33 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
               <br />
               Shortcuts: <kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">Ctrl+G</kbd> / <kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">Ctrl+Shift+G</kbd>
             </p>
+
+            <Separator />
+
+            <h4 className="font-semibold text-xs text-muted-foreground uppercase">Auto Layout</h4>
+            <Label className="text-xs">Gap: {layoutGap}px</Label>
+            <input
+              type="range"
+              min="4"
+              max="80"
+              value={layoutGap}
+              onChange={(e) => setLayoutGap(parseInt(e.target.value))}
+              className="w-full"
+            />
+            <div className="grid grid-cols-3 gap-1.5">
+              <Button variant="outline" size="sm" className="text-xs" onClick={() => autoLayout("row")}>Row</Button>
+              <Button variant="outline" size="sm" className="text-xs" onClick={() => autoLayout("column")}>Column</Button>
+              <Button variant="outline" size="sm" className="text-xs" onClick={() => autoLayout("grid")}>Grid</Button>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs"
+              onClick={runLayoutAssistant}
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              AI Layout Assistant
+            </Button>
 
             <Separator />
 
@@ -1321,6 +1741,22 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
                   AI is creating your design with editable elements...
                 </p>
               )}
+              <Button
+                variant="outline"
+                className="w-full gap-2 text-xs"
+                onClick={applyVariation}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Variation
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full gap-2 text-xs"
+                onClick={runLayoutAssistant}
+              >
+                <WandSparkles className="w-3.5 h-3.5" />
+                Analyze Layout
+              </Button>
             </div>
 
             <Separator />
@@ -1358,6 +1794,22 @@ export function DesignToolbar({ canvasRef, activeTool, onToolChange, onOpenTempl
             <p className="text-xs text-muted-foreground text-center">
               Choose from pre-designed templates to get started quickly.
             </p>
+            <Separator />
+            <h4 className="font-semibold text-sm">Magic Resize</h4>
+            <p className="text-xs text-muted-foreground">Resize and adapt your current design.</p>
+            <div className="grid grid-cols-1 gap-1.5">
+              {DESIGN_SIZES.filter((size) => size.name !== "Custom").slice(0, 8).map((size) => (
+                <Button
+                  key={size.name}
+                  variant="outline"
+                  className="justify-between text-xs"
+                  onClick={() => onMagicResize?.(size.width, size.height)}
+                >
+                  <span>{size.name}</span>
+                  <span className="text-[10px] text-muted-foreground">{size.width}x{size.height}</span>
+                </Button>
+              ))}
+            </div>
           </div>
         );
 

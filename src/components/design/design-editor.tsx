@@ -10,7 +10,7 @@ import { DesignHeader } from "./design-header";
 import { DesignTemplates } from "./design-templates";
 import { DesignContextMenu } from "./design-context-menu";
 import { toast } from "@/components/ui/use-toast";
-import { Group, Ungroup, Copy, Trash2, FlipHorizontal, FlipVertical } from "lucide-react";
+import { Group, Ungroup, Copy, Trash2, FlipHorizontal, FlipVertical, History, RotateCcw } from "lucide-react";
 
 interface DesignEditorProps {
   designId: string | null;
@@ -40,6 +40,9 @@ export function DesignEditor({
   const [currentDesignId, setCurrentDesignId] = useState<string | null>(designId);
   const [canvasReady, setCanvasReady] = useState(false);
   const [contextMenu, setContextMenu] = useState({ isOpen: false, x: 0, y: 0 });
+  const [snapshots, setSnapshots] = useState<Array<{ id: string; name: string; json: string; createdAt: string }>>([]);
+  const [showSnapshots, setShowSnapshots] = useState(false);
+  const isMultiSelection = selectedObject?.type === "activeselection" || selectedObject?.type === "activeSelection";
 
   const handleCanvasReady = useCallback(
     (api: DesignCanvasAPI) => {
@@ -69,6 +72,81 @@ export function DesignEditor({
     setDesignWidth(w);
     setDesignHeight(h);
     // zoomToFit will be triggered by the useEffect on width/height change
+  }, []);
+
+  const handleMagicResize = useCallback((w: number, h: number) => {
+    const canvas = canvasAPIRef.current?.getCanvas();
+    if (!canvas) {
+      setDesignWidth(w);
+      setDesignHeight(h);
+      return;
+    }
+
+    const oldW = designWidth || 1;
+    const oldH = designHeight || 1;
+    const sx = w / oldW;
+    const sy = h / oldH;
+
+    canvas.getObjects().forEach((obj: any) => {
+      if (obj?._isBgImage) {
+        obj.set({
+          left: 0,
+          top: 0,
+          scaleX: w / (obj.width || w),
+          scaleY: h / (obj.height || h),
+        });
+        return;
+      }
+      obj.set({
+        left: (obj.left || 0) * sx,
+        top: (obj.top || 0) * sy,
+        scaleX: (obj.scaleX || 1) * sx,
+        scaleY: (obj.scaleY || 1) * sy,
+      });
+      obj.setCoords?.();
+    });
+
+    canvas.renderAll();
+    setDesignWidth(w);
+    setDesignHeight(h);
+    setTimeout(() => canvasAPIRef.current?.zoomToFit(), 80);
+  }, [designWidth, designHeight]);
+
+  useEffect(() => {
+    if (!currentDesignId) return;
+    try {
+      const raw = localStorage.getItem(`design:snapshots:${currentDesignId}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setSnapshots(parsed);
+    } catch {
+      // ignore localStorage parse errors
+    }
+  }, [currentDesignId]);
+
+  const persistSnapshots = useCallback((next: Array<{ id: string; name: string; json: string; createdAt: string }>) => {
+    setSnapshots(next);
+    if (!currentDesignId) return;
+    localStorage.setItem(`design:snapshots:${currentDesignId}`, JSON.stringify(next));
+  }, [currentDesignId]);
+
+  const createSnapshot = useCallback(() => {
+    const json = canvasAPIRef.current?.toJSON();
+    if (!json) return;
+    const entry = {
+      id: `${Date.now()}`,
+      name: `Snapshot ${snapshots.length + 1}`,
+      json,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [entry, ...snapshots].slice(0, 20);
+    persistSnapshots(next);
+    toast({ title: "Snapshot created" });
+  }, [snapshots, persistSnapshots]);
+
+  const restoreSnapshot = useCallback((snapshotJson: string) => {
+    canvasAPIRef.current?.loadJSON(snapshotJson);
+    toast({ title: "Snapshot restored" });
   }, []);
 
   // Keyboard shortcuts
@@ -243,6 +321,7 @@ export function DesignEditor({
           onOpenTemplates={() => setShowTemplates(true)}
           designWidth={designWidth}
           designHeight={designHeight}
+          onMagicResize={handleMagicResize}
         />
 
         {/* Canvas Area - must be relative so DesignCanvas absolute inset-0 works */}
@@ -280,7 +359,7 @@ export function DesignEditor({
               className="flex items-center gap-0.5 bg-[#1e1e3a]/95 backdrop-blur-md rounded-lg px-2 py-1 shadow-lg border border-white/10"
             >
               {/* Group button - when multiple objects selected */}
-              {selectedObject.type === "activeselection" && (
+              {isMultiSelection && (
                 <button
                   onClick={() => canvasAPIRef.current?.group()}
                   className="flex items-center gap-1.5 text-white/80 hover:text-white text-xs px-2.5 py-1.5 rounded hover:bg-white/10 transition-colors"
@@ -379,6 +458,44 @@ export function DesignEditor({
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             </button>
           </div>
+
+          <div className="absolute bottom-16 left-4 z-20 flex gap-2">
+            <button
+              onClick={createSnapshot}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded bg-[#1e1e3a]/90 text-white/80 hover:text-white border border-white/10"
+              title="Create version snapshot"
+            >
+              <History className="w-3.5 h-3.5" />
+              Snapshot
+            </button>
+            <button
+              onClick={() => setShowSnapshots((p) => !p)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded bg-[#1e1e3a]/90 text-white/80 hover:text-white border border-white/10"
+              title="Restore version snapshot"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              History
+            </button>
+          </div>
+
+          {showSnapshots && (
+            <div className="absolute bottom-28 left-4 z-20 w-72 max-h-80 overflow-auto rounded-lg border border-white/10 bg-[#1e1e3a]/95 p-2 space-y-1.5">
+              {snapshots.length === 0 ? (
+                <p className="text-xs text-white/50 p-2">No snapshots yet.</p>
+              ) : (
+                snapshots.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => restoreSnapshot(s.json)}
+                    className="w-full text-left rounded px-2 py-1.5 text-xs text-white/80 hover:bg-white/10"
+                  >
+                    <p className="font-medium">{s.name}</p>
+                    <p className="text-[10px] text-white/50">{new Date(s.createdAt).toLocaleString()}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
 
           {/* Right properties panel - ABSOLUTE overlay so it doesn't push/resize the canvas */}
           {selectedObject && (

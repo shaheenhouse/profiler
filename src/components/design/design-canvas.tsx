@@ -315,6 +315,32 @@ export default function DesignCanvas({
           onCanvasModified?.();
         }
       });
+      canvas.on("object:moving", (e) => {
+        const target = e.target as any;
+        if (!target?._isConnector || !target._connectorData) return;
+        const prevLeft = target._lastLeft ?? target.left ?? 0;
+        const prevTop = target._lastTop ?? target.top ?? 0;
+        const nextLeft = target.left ?? 0;
+        const nextTop = target.top ?? 0;
+        const dx = nextLeft - prevLeft;
+        const dy = nextTop - prevTop;
+        if (dx === 0 && dy === 0) return;
+        target._connectorData = {
+          ...target._connectorData,
+          x1: target._connectorData.x1 + dx,
+          y1: target._connectorData.y1 + dy,
+          x2: target._connectorData.x2 + dx,
+          y2: target._connectorData.y2 + dy,
+        };
+        target._lastLeft = nextLeft;
+        target._lastTop = nextTop;
+      });
+      canvas.on("object:modified", (e) => {
+        const target = e.target as any;
+        if (!target?._isConnector) return;
+        target._lastLeft = target.left ?? 0;
+        target._lastTop = target.top ?? 0;
+      });
 
       // Ctrl+Scroll zoom - CSS transform based
       canvas.on("mouse:wheel", (opt) => {
@@ -343,6 +369,133 @@ export default function DesignCanvas({
       let fcCreating = false;
       let fcStart: { x: number; y: number } | null = null;
       let fcEnd: { x: number; y: number } | null = null;
+      let connectorDragState: {
+        group: any;
+      } | null = null;
+
+      function fcDashFromStyle(style: "solid" | "dashed" | "dotted", w: number) {
+        if (style === "dashed") return [w * 4, w * 2];
+        if (style === "dotted") return [w, w * 2];
+        return undefined;
+      }
+
+      function fcHeadPolygonPoints(x: number, y: number, angle: number, size = 14) {
+        return [
+          { x, y },
+          { x: x - size * Math.cos(angle - Math.PI / 7), y: y - size * Math.sin(angle - Math.PI / 7) },
+          { x: x - size * Math.cos(angle + Math.PI / 7), y: y - size * Math.sin(angle + Math.PI / 7) },
+        ];
+      }
+
+      function fcCreateConnectorGroup(
+        x1: number,
+        y1: number,
+        x2: number,
+        y2: number,
+        options?: {
+          mode?: "straight" | "elbow";
+          color?: string;
+          strokeWidth?: number;
+          lineStyle?: "solid" | "dashed" | "dotted";
+          headStyle?: "filled" | "outline" | "open" | "diamond" | "circle" | "none";
+          hasStartHead?: boolean;
+        }
+      ) {
+        const fb = fabricLib;
+        const mode = options?.mode || "straight";
+        const color = options?.color || "#475569";
+        const strokeWidth = options?.strokeWidth ?? 2.5;
+        const lineStyle = options?.lineStyle || "solid";
+        const headStyle = options?.headStyle || "filled";
+        const hasStartHead = !!options?.hasStartHead;
+
+        const dash = fcDashFromStyle(lineStyle, strokeWidth);
+        const parts: any[] = [];
+
+        let line: any;
+        let endAngle = Math.atan2(y2 - y1, x2 - x1);
+        let startAngle = endAngle + Math.PI;
+
+        if (mode === "elbow") {
+          const pts = [
+            { x: x1, y: y1 },
+            { x: x1, y: y2 },
+            { x: x2, y: y2 },
+          ];
+          line = new fb.Polyline(pts, {
+            stroke: color,
+            strokeWidth,
+            fill: "",
+            strokeDashArray: dash || null,
+          });
+          endAngle = Math.atan2(0, x2 - x1);
+          startAngle = Math.atan2(y1 - y2, 0);
+        } else {
+          line = new fb.Line([x1, y1, x2, y2], {
+            stroke: color,
+            strokeWidth,
+            strokeDashArray: dash || null,
+          });
+        }
+        parts.push(line);
+
+        if (headStyle !== "none") {
+          const endHead = new fb.Polygon(fcHeadPolygonPoints(x2, y2, endAngle, 14), {
+            fill: headStyle === "outline" || headStyle === "open" ? "transparent" : color,
+            stroke: headStyle === "outline" || headStyle === "open" ? color : "",
+            strokeWidth: headStyle === "outline" || headStyle === "open" ? Math.max(1.5, strokeWidth * 0.7) : 0,
+          });
+          parts.push(endHead);
+        }
+
+        if (hasStartHead && headStyle !== "none") {
+          const startHead = new fb.Polygon(fcHeadPolygonPoints(x1, y1, startAngle, 14), {
+            fill: headStyle === "outline" || headStyle === "open" ? "transparent" : color,
+            stroke: headStyle === "outline" || headStyle === "open" ? color : "",
+            strokeWidth: headStyle === "outline" || headStyle === "open" ? Math.max(1.5, strokeWidth * 0.7) : 0,
+          });
+          parts.push(startHead);
+        }
+
+        const group = new fb.Group(parts);
+        (group as any)._isConnector = true;
+        (group as any)._lineStyle = lineStyle;
+        (group as any)._headStyle = headStyle;
+        (group as any)._hasStartHead = hasStartHead;
+        (group as any)._connectorData = { x1, y1, x2, y2, mode };
+        (group as any)._lastLeft = group.left || 0;
+        (group as any)._lastTop = group.top || 0;
+        return group;
+      }
+
+      function fcReplaceConnectorGroup(oldGroup: any, nextData: { x1: number; y1: number; x2: number; y2: number; mode: "straight" | "elbow" }) {
+        const canvasLocal = fabricRef.current;
+        if (!canvasLocal) return oldGroup;
+        const children = oldGroup?.getObjects?.() || [];
+        let color = "#475569";
+        let strokeWidth = 2.5;
+        for (const child of children) {
+          if (child.type === "line" || child.type === "polyline" || child.type === "path") {
+            color = child.stroke || color;
+            strokeWidth = child.strokeWidth || strokeWidth;
+            break;
+          }
+        }
+        const replacement = fcCreateConnectorGroup(nextData.x1, nextData.y1, nextData.x2, nextData.y2, {
+          mode: nextData.mode,
+          color,
+          strokeWidth,
+          lineStyle: oldGroup?._lineStyle || "solid",
+          headStyle: oldGroup?._headStyle || "filled",
+          hasStartHead: !!oldGroup?._hasStartHead,
+        });
+        const wasActive = canvasLocal.getActiveObject() === oldGroup;
+        canvasLocal.remove(oldGroup);
+        canvasLocal.add(replacement);
+        if (wasActive) canvasLocal.setActiveObject(replacement);
+        canvasLocal.requestRenderAll();
+        return replacement;
+      }
 
       function fcGetPorts(shape: any): { name: string; x: number; y: number }[] {
         if (!shape) return [];
@@ -399,10 +552,13 @@ export default function DesignCanvas({
             ctx.beginPath();
             ctx.moveTo(fcStart.x, fcStart.y);
             ctx.lineTo(fcEnd.x, fcEnd.y);
-            ctx.strokeStyle = "#3B82F6";
-            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = "rgba(59,130,246,0.95)";
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "rgba(59,130,246,0.65)";
+            ctx.shadowBlur = 14;
             ctx.setLineDash([8, 5]);
             ctx.stroke();
+            ctx.shadowBlur = 0;
             ctx.setLineDash([]);
 
             const ang = Math.atan2(dy, dx);
@@ -412,8 +568,11 @@ export default function DesignCanvas({
             ctx.lineTo(fcEnd.x - hl * Math.cos(ang - Math.PI / 6), fcEnd.y - hl * Math.sin(ang - Math.PI / 6));
             ctx.lineTo(fcEnd.x - hl * Math.cos(ang + Math.PI / 6), fcEnd.y - hl * Math.sin(ang + Math.PI / 6));
             ctx.closePath();
-            ctx.fillStyle = "#3B82F6";
+            ctx.fillStyle = "rgba(59,130,246,0.95)";
+            ctx.shadowColor = "rgba(59,130,246,0.6)";
+            ctx.shadowBlur = 10;
             ctx.fill();
+            ctx.shadowBlur = 0;
           }
 
           const objs = canvas.getObjects();
@@ -461,6 +620,9 @@ export default function DesignCanvas({
         return result as FabricObject;
       }
 
+      const isActiveSelectionObj = (obj: any) =>
+        !!obj && (obj.type === "activeselection" || obj.type === "activeSelection");
+
       canvas.on("mouse:move", (opt) => {
         if (!fcMode) return;
         const pointer = fcGetPointer(opt.e);
@@ -474,7 +636,7 @@ export default function DesignCanvas({
 
         const target = fcFindTarget(opt.e);
         const tAny = target as any;
-        if (target && tAny.type !== "activeselection" && !tAny._isConnector && !tAny._isBgImage
+        if (target && !isActiveSelectionObj(tAny) && !tAny._isConnector && !tAny._isBgImage
           && !(tAny.group && tAny.group._isConnector)) {
           fcHoveredShape = target;
           const ports = fcGetPorts(target);
@@ -549,32 +711,72 @@ export default function DesignCanvas({
           }
         }
 
-        const fb = fabricLib;
-        const dx = finalEnd.x - fcStart.x;
-        const dy = finalEnd.y - fcStart.y;
-        const ang = Math.atan2(dy, dx);
-        const hl = 14;
-
-        const line = new fb.Line(
-          [fcStart.x, fcStart.y, finalEnd.x, finalEnd.y],
-          { stroke: "#475569", strokeWidth: 2.5 }
-        );
-        const head = new fb.Polygon([
-          { x: finalEnd.x, y: finalEnd.y },
-          { x: finalEnd.x - hl * Math.cos(ang - Math.PI / 7), y: finalEnd.y - hl * Math.sin(ang - Math.PI / 7) },
-          { x: finalEnd.x - hl * Math.cos(ang + Math.PI / 7), y: finalEnd.y - hl * Math.sin(ang + Math.PI / 7) },
-        ], { fill: "#475569" });
-
-        const group = new fb.Group([line, head]);
-        (group as any)._isConnector = true;
-        (group as any)._headStyle = "filled";
-        (group as any)._lineStyle = "solid";
+        const group = fcCreateConnectorGroup(fcStart.x, fcStart.y, finalEnd.x, finalEnd.y, {
+          mode: "straight",
+          color: "#475569",
+          strokeWidth: 2.5,
+          lineStyle: "solid",
+          headStyle: "filled",
+          hasStartHead: false,
+        });
         canvas.add(group);
         canvas.setActiveObject(group);
 
         fcStart = null;
         fcEnd = null;
         canvas.requestRenderAll();
+        saveToHistory();
+        onCanvasModified?.();
+      });
+
+      // Drag arrow head to extend / bend connectors (90-degree elbow support)
+      canvas.on("mouse:down", (opt) => {
+        if (fcCreating) return;
+        const target = fcFindTarget(opt.e) as any;
+        if (!target || !target._isConnector || !target._connectorData) return;
+        const pointer = fcGetPointer(opt.e);
+        const data = target._connectorData;
+        const headDist = Math.hypot(pointer.x - data.x2, pointer.y - data.y2);
+        if (headDist > 18) return;
+        connectorDragState = { group: target };
+        canvas.selection = false;
+        canvas.setActiveObject(target);
+        const el = (canvas as any).upperCanvasEl;
+        if (el) el.style.cursor = "crosshair";
+      });
+
+      canvas.on("mouse:move", (opt) => {
+        if (!connectorDragState) return;
+        const pointer = fcGetPointer(opt.e);
+        const group = connectorDragState.group;
+        const data = group?._connectorData;
+        if (!data) return;
+
+        let mode: "straight" | "elbow" = "straight";
+        if (Math.abs(pointer.y - data.y1) > 18) mode = "elbow";
+
+        let x2 = pointer.x;
+        let y2 = pointer.y;
+        if (mode === "elbow" && Math.abs(x2 - data.x1) < 20) {
+          x2 = x2 >= data.x1 ? data.x1 + 40 : data.x1 - 40;
+        }
+
+        const replacement = fcReplaceConnectorGroup(group, {
+          x1: data.x1,
+          y1: data.y1,
+          x2,
+          y2,
+          mode,
+        });
+        connectorDragState.group = replacement;
+      });
+
+      canvas.on("mouse:up", () => {
+        if (!connectorDragState) return;
+        connectorDragState = null;
+        canvas.selection = true;
+        const el = (canvas as any).upperCanvasEl;
+        if (el) el.style.cursor = "";
         saveToHistory();
         onCanvasModified?.();
       });
@@ -837,52 +1039,36 @@ export default function DesignCanvas({
 
             // Connectors
             case "connector-arrow": {
-              const line = new fb.Line(
-                [centerX - 100, centerY, centerX + 80, centerY],
-                { stroke: "#333333", strokeWidth: 3 }
-              );
-              const head = new fb.Polygon([
-                { x: centerX + 80, y: centerY - 12 },
-                { x: centerX + 100, y: centerY },
-                { x: centerX + 80, y: centerY + 12 },
-              ], { fill: "#333333" });
-              const cg1 = new fb.Group([line, head]);
-              (cg1 as any)._isConnector = true;
+              const cg1 = fcCreateConnectorGroup(centerX - 100, centerY, centerX + 100, centerY, {
+                mode: "straight",
+                color: "#333333",
+                strokeWidth: 3,
+                lineStyle: "solid",
+                headStyle: "filled",
+              });
               shape = cg1 as unknown as FabricObject;
               break;
             }
             case "connector-double": {
-              const dLine = new fb.Line(
-                [centerX - 80, centerY, centerX + 80, centerY],
-                { stroke: "#333333", strokeWidth: 3 }
-              );
-              const headR = new fb.Polygon([
-                { x: centerX + 80, y: centerY - 12 },
-                { x: centerX + 100, y: centerY },
-                { x: centerX + 80, y: centerY + 12 },
-              ], { fill: "#333333" });
-              const headL = new fb.Polygon([
-                { x: centerX - 80, y: centerY - 12 },
-                { x: centerX - 100, y: centerY },
-                { x: centerX - 80, y: centerY + 12 },
-              ], { fill: "#333333" });
-              const cg2 = new fb.Group([dLine, headR, headL]);
-              (cg2 as any)._isConnector = true;
+              const cg2 = fcCreateConnectorGroup(centerX - 100, centerY, centerX + 100, centerY, {
+                mode: "straight",
+                color: "#333333",
+                strokeWidth: 3,
+                lineStyle: "solid",
+                headStyle: "filled",
+                hasStartHead: true,
+              });
               shape = cg2 as unknown as FabricObject;
               break;
             }
             case "connector-dashed": {
-              const dashLine = new fb.Line(
-                [centerX - 100, centerY, centerX + 80, centerY],
-                { stroke: "#333333", strokeWidth: 3, strokeDashArray: [10, 6] }
-              );
-              const dashHead = new fb.Polygon([
-                { x: centerX + 80, y: centerY - 12 },
-                { x: centerX + 100, y: centerY },
-                { x: centerX + 80, y: centerY + 12 },
-              ], { fill: "#333333" });
-              const cg3 = new fb.Group([dashLine, dashHead]);
-              (cg3 as any)._isConnector = true;
+              const cg3 = fcCreateConnectorGroup(centerX - 100, centerY, centerX + 100, centerY, {
+                mode: "straight",
+                color: "#333333",
+                strokeWidth: 3,
+                lineStyle: "dashed",
+                headStyle: "filled",
+              });
               shape = cg3 as unknown as FabricObject;
               break;
             }
@@ -902,19 +1088,13 @@ export default function DesignCanvas({
               break;
             }
             case "connector-elbow": {
-              const elbowPath = new fb.Polyline([
-                { x: centerX - 100, y: centerY },
-                { x: centerX - 100, y: centerY - 50 },
-                { x: centerX + 80, y: centerY - 50 },
-                { x: centerX + 80, y: centerY },
-              ], { stroke: "#333333", strokeWidth: 3, fill: "" });
-              const elbowHead = new fb.Polygon([
-                { x: centerX + 68, y: centerY },
-                { x: centerX + 80, y: centerY + 16 },
-                { x: centerX + 92, y: centerY },
-              ], { fill: "#333333" });
-              const cg5 = new fb.Group([elbowPath, elbowHead]);
-              (cg5 as any)._isConnector = true;
+              const cg5 = fcCreateConnectorGroup(centerX - 100, centerY - 50, centerX + 100, centerY, {
+                mode: "elbow",
+                color: "#333333",
+                strokeWidth: 3,
+                lineStyle: "solid",
+                headStyle: "filled",
+              });
               shape = cg5 as unknown as FabricObject;
               break;
             }
@@ -1090,48 +1270,85 @@ export default function DesignCanvas({
           if (active) { fabricRef.current.sendObjectToBack(active); fabricRef.current.renderAll(); saveToHistory(); onCanvasModified?.(); }
         },
 
-        // ── FIXED GROUPING ──
-        group: async () => {
+        group: () => {
           const canvas = fabricRef.current;
           if (!canvas) return;
           const active = canvas.getActiveObject();
-          if (!active || active.type !== "activeselection") return;
-          try {
-            const fb = fabricLib;
-            const selection = active as any;
-            const objects = selection.getObjects().slice();
-            if (objects.length < 2) return;
+          if (!active || !isActiveSelectionObj(active)) return;
+          const objects = canvas.getActiveObjects().slice();
+          if (objects.length < 2) return;
 
-            // Use Fabric.js built-in toGroup for correct grouping
-            const group = (selection as any).toGroup();
-            if (group) {
-              canvas.setActiveObject(group);
-              canvas.requestRenderAll();
-              saveToHistory();
-              onCanvasModified?.();
-            }
-          } catch (err) {
-            console.error("Error grouping:", err);
-          }
+          canvas.discardActiveObject();
+          for (const obj of objects) canvas.remove(obj);
+          const group = new fabricLib.Group(objects);
+          canvas.add(group);
+          group.setCoords();
+          canvas.setActiveObject(group);
+          canvas.requestRenderAll();
+          saveToHistory();
+          onCanvasModified?.();
         },
 
-        ungroup: async () => {
+        ungroup: () => {
           const canvas = fabricRef.current;
           if (!canvas) return;
           const active = canvas.getActiveObject();
           if (!active || active.type !== "group") return;
-          try {
-            const fb = fabricLib;
-            // Use Fabric.js built-in toActiveSelection for correct ungrouping
-            const activeSelection = (active as any).toActiveSelection();
-            if (activeSelection) {
-              canvas.requestRenderAll();
-              saveToHistory();
-              onCanvasModified?.();
+
+          const group = active as any;
+          const children: FabricObject[] = (group._objects as FabricObject[]).slice();
+          if (children.length === 0) return;
+
+          // child.calcTransformMatrix() already includes the full parent
+          // chain (group transform * own transform), so it directly gives
+          // the absolute canvas transform. Decompose it to get the exact
+          // visual position/scale/angle/skew each child has on screen.
+          const { qrDecompose } = fabricLib.util;
+          const snapshots = children.map(child => {
+            const absMatrix = child.calcTransformMatrix();
+            return { obj: child, decomposed: qrDecompose(absMatrix) };
+          });
+
+          canvas.discardActiveObject();
+          group._objects = [];
+          canvas.remove(group);
+
+          for (const { obj, decomposed } of snapshots) {
+            if ((obj as any)._set) {
+              (obj as any)._set('group', undefined);
+              (obj as any)._set('parent', undefined);
+            } else {
+              (obj as any).group = undefined;
+              (obj as any).parent = undefined;
             }
-          } catch (err) {
-            console.error("Error ungrouping:", err);
+            obj.set({
+              scaleX: decomposed.scaleX,
+              scaleY: decomposed.scaleY,
+              angle: decomposed.angle,
+              skewX: decomposed.skewX,
+              skewY: decomposed.skewY,
+              flipX: false,
+              flipY: false,
+            });
+            obj.setPositionByOrigin(
+              new fabricLib.Point(decomposed.translateX, decomposed.translateY),
+              'center',
+              'center',
+            );
+            obj.setCoords();
+            canvas.add(obj);
           }
+
+          const objs = snapshots.map(s => s.obj);
+          if (objs.length > 1) {
+            const sel = new fabricLib.ActiveSelection(objs, { canvas });
+            canvas.setActiveObject(sel);
+          } else {
+            canvas.setActiveObject(objs[0]);
+          }
+          canvas.requestRenderAll();
+          saveToHistory();
+          onCanvasModified?.();
         },
 
         // ── Clipboard ──
@@ -1140,7 +1357,7 @@ export default function DesignCanvas({
           const canvas = fabricRef.current;
           const active = canvas.getActiveObject();
           if (!active) return;
-          if (active.type === "activeselection") {
+          if (isActiveSelectionObj(active)) {
             const originals = [...(active as any).getObjects()] as FabricObject[];
             canvas.discardActiveObject();
             const clones: FabricObject[] = [];
@@ -1161,7 +1378,7 @@ export default function DesignCanvas({
           const canvas = fabricRef.current;
           const active = canvas.getActiveObject();
           if (!active) return;
-          if (active.type === "activeselection") {
+          if (isActiveSelectionObj(active)) {
             const originals = [...(active as any).getObjects()] as FabricObject[];
             canvas.discardActiveObject();
             const clones: FabricObject[] = [];
@@ -1306,7 +1523,7 @@ export default function DesignCanvas({
           const active = canvas.getActiveObject();
           if (!active) return;
 
-          if (active.type === "activeselection") {
+          if (isActiveSelectionObj(active)) {
             const originals = [...(active as any).getObjects()] as FabricObject[];
             canvas.discardActiveObject();
             const clones: FabricObject[] = [];
